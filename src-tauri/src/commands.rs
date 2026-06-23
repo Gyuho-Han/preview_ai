@@ -17,7 +17,8 @@ async fn client() -> reqwest::Client {
 #[tauri::command]
 pub async fn wait_for_sidecar() -> Result<Value, String> {
     let c = client().await;
-    for _ in 0..60 {
+    // 사이드카(Python) 첫 임포트(mlx 등)가 느릴 수 있어 넉넉히 대기 (최대 90초)
+    for _ in 0..180 {
         if let Ok(resp) = c.get(format!("{SIDECAR_BASE}/health")).send().await {
             if resp.status().is_success() {
                 return resp.json::<Value>().await.map_err(|e| e.to_string());

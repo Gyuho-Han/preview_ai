@@ -2,7 +2,7 @@
 // 사이드카 HTTP를 직접 호출하거나 목 데이터로 폴백한다.
 // 덕분에 UI를 Tauri 없이도 `npm run dev`로 개발할 수 있다.
 
-import type { Clip, PlanContext, ProjectSummary } from "./types";
+import type { Clip, PlanContext, ProjectSummary, SetupSnapshot } from "./types";
 import { mockApi } from "./mock";
 
 const SIDECAR = "http://127.0.0.1:8765";
@@ -55,6 +55,20 @@ export async function initApi(): Promise<{ mode: string }> {
 export const api = {
   thumbUrl(cid: string): string {
     return `${SIDECAR}/thumb/${cid}`;
+  },
+
+  // ---- 첫 실행 셋업 (브라우저/Tauri 모두 사이드카 HTTP 직접 사용) ----
+  async setupStatus(): Promise<SetupSnapshot> {
+    if (useMock) return { installing: false, all_ready: true, items: [] };
+    return http("/setup/status");
+  },
+  async setupInstall(): Promise<{ started: boolean }> {
+    if (useMock) return { started: true };
+    return http("/setup/install", { method: "POST" });
+  },
+  async setupProgress(): Promise<SetupSnapshot> {
+    if (useMock) return { installing: false, all_ready: true, items: [] };
+    return http("/setup/progress");
   },
 
   async listProjects(): Promise<ProjectSummary[]> {

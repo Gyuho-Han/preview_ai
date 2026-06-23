@@ -23,4 +23,7 @@ mlx-whisper>=0.4.0
 ollama>=0.3.0           # 최신 ollama-python과 호환
 httpx>=0.27.0
 
+# 첫 실행 셋업: Whisper 모델 다운로드 (mlx-whisper가 의존하지만 명시)
+huggingface_hub>=0.23.0
+
 # ffmpeg 바이너리는 시스템 설치 필요: `brew install ffmpeg`

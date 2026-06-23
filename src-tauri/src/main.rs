@@ -5,12 +5,13 @@
 mod commands;
 mod sidecar;
 
-use tauri::{Manager, RunEvent};
+use tauri::RunEvent;
 
 fn main() {
     tauri::Builder::default()
         .setup(|_app| {
-            // 앱 시작 시 Python 사이드카 부팅
+            // 앱 시작 시 Ollama 확보 → Python 사이드카 부팅
+            sidecar::ensure_ollama();
             sidecar::spawn_sidecar();
             Ok(())
         })
@@ -29,9 +30,9 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app_handle, event| {
-            // 앱 종료 시 사이드카 정리
+            // 앱 종료 시 사이드카 + Ollama 정리
             if let RunEvent::ExitRequested { .. } = event {
-                sidecar::kill_sidecar();
+                sidecar::kill_all();
             }
         });
 }
