@@ -21,6 +21,11 @@
             "name": "bin/preview-sidecar",
             "sidecar": true,
             "args": ["--port", "8765"]
+          },
+          {
+            "name": "bin/ollama",
+            "sidecar": true,
+            "args": ["serve"]
           }
         ]
       },
@@ -48,7 +53,8 @@
       "targets": ["app", "dmg"],
       "identifier": "ai.preview.app",
       "icon": ["icons/icon.icns"],
-      "externalBin": ["bin/preview-sidecar"],
+      "externalBin": [],
+      "resources": [],
       "macOS": {
         "minimumSystemVersion": "12.0"
       }
@@ -65,7 +71,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8765 http://localhost:8765; img-src 'self' asset: data: http://127.0.0.1:8765; media-src 'self' asset: http://127.0.0.1:8765"
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8765 http://localhost:8765; img-src 'self' asset: data: http://127.0.0.1:8765; media-src 'self' asset: http://127.0.0.1:8765; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
   }
 }

@@ -12,13 +12,25 @@
   --radius: 10px;
 }
 
+:root {
+  --font: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont,
+    system-ui, "Apple SD Gothic Neo", sans-serif;
+}
+
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
-  font-family: -apple-system, "SF Pro Text", "Pretendard", system-ui, sans-serif;
+  font-family: var(--font);
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 모든 폰트를 Pretendard로 통일 (폼 요소·코드 포함) */
+button, input, textarea, select, code, pre, kbd {
+  font-family: var(--font);
 }
 
 .app { display: flex; flex-direction: column; height: 100vh; }

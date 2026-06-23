@@ -7,6 +7,7 @@ import CreateProject from "./pages/CreateProject";
 import ProjectHome from "./pages/ProjectHome";
 import TableView from "./pages/TableView";
 import ClipDetail from "./pages/ClipDetail";
+import "./fonts/pretendard.css";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

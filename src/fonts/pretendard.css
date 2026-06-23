@@ -1,0 +1,10 @@
+/* Pretendard 가변 폰트 self-host (OFL 1.1)
+   https://github.com/orioncactus/pretendard
+   npm 의존성 없이 프로젝트에 직접 포함 — 오프라인·Tauri CSP 모두 동작 */
+@font-face {
+  font-family: "Pretendard Variable";
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url("./PretendardVariable.woff2") format("woff2-variations");
+}

@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:build": "tauri build --config src-tauri/tauri.bundle.conf.json",
     "sidecar:dev": "cd python-sidecar && uvicorn server:app --port 8765 --reload"
   },
   "dependencies": {

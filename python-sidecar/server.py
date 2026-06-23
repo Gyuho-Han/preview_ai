@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import analyzer
+import setup_deps
 from config import settings
 
 app = FastAPI(title="Preview AI Sidecar", version="0.1.0")
@@ -131,6 +132,26 @@ def health() -> dict:
         },
         "concurrency": settings.concurrency,
     }
+
+
+# ---- 첫 실행 셋업 (의존성 체크 + 누락분 설치) ------------------------------
+@app.get("/setup/status")
+def setup_status() -> dict:
+    """모든 의존성 재검사 후 상태 반환."""
+    return setup_deps.check_status()
+
+
+@app.post("/setup/install")
+def setup_install() -> dict:
+    """누락된 항목만 백그라운드 설치 시작."""
+    setup_deps.install_missing()
+    return {"started": True}
+
+
+@app.get("/setup/progress")
+def setup_progress() -> dict:
+    """현재 진행률 스냅샷(가벼운 폴링용, 재검사 안 함)."""
+    return setup_deps.snapshot()
 
 
 # ---- P1 프로젝트 -----------------------------------------------------------

@@ -1,5 +1,28 @@
 // 도메인 타입 — 사이드카 응답 스키마와 1:1
 
+export type SetupItemStatus =
+  | "present"
+  | "pending"
+  | "downloading"
+  | "done"
+  | "error"
+  | "blocked";
+
+export interface SetupItem {
+  name: string;
+  label: string;
+  kind: string;
+  status: SetupItemStatus;
+  pct: number;
+  detail: string;
+}
+
+export interface SetupSnapshot {
+  installing: boolean;
+  all_ready: boolean;
+  items: SetupItem[];
+}
+
 export interface ProjectSummary {
   id: string;
   name: string;

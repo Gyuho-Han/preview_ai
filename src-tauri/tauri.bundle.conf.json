@@ -1,0 +1,7 @@
+{
+  "tauri": {
+    "bundle": {
+      "externalBin": ["bin/preview-sidecar", "bin/ollama", "bin/ffmpeg"]
+    }
+  }
+}
