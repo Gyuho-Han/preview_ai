@@ -1,0 +1,71 @@
+{
+  "$schema": "https://schema.tauri.app/config/1",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "Preview AI",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "sidecar": true,
+        "scope": [
+          {
+            "name": "bin/preview-sidecar",
+            "sidecar": true,
+            "args": ["--port", "8765"]
+          }
+        ]
+      },
+      "dialog": {
+        "all": true,
+        "open": true,
+        "save": true
+      },
+      "fs": {
+        "all": false,
+        "readFile": true,
+        "writeFile": true,
+        "createDir": true,
+        "scope": ["$APPDATA/preview-ai/**", "$HOME/**"]
+      },
+      "path": { "all": true },
+      "http": {
+        "all": true,
+        "request": true,
+        "scope": ["http://127.0.0.1:8765/*", "http://localhost:8765/*"]
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": ["app", "dmg"],
+      "identifier": "ai.preview.app",
+      "icon": ["icons/icon.icns"],
+      "externalBin": ["bin/preview-sidecar"],
+      "macOS": {
+        "minimumSystemVersion": "12.0"
+      }
+    },
+    "windows": [
+      {
+        "title": "Preview AI",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8765 http://localhost:8765; img-src 'self' asset: data: http://127.0.0.1:8765; media-src 'self' asset: http://127.0.0.1:8765"
+    }
+  }
+}

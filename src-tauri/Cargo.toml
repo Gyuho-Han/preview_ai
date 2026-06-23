@@ -1,0 +1,30 @@
+[package]
+name = "preview-ai"
+version = "0.1.0"
+description = "Preview AI — 다큐팀용 로컬 영상 분석 데스크탑 앱"
+authors = ["Gyuho"]
+edition = "2021"
+rust-version = "1.70"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.6", features = ["dialog-all", "fs-all", "path-all", "http-all", "shell-sidecar"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.11", features = ["json", "multipart"] }
+uuid = { version = "1", features = ["v4"] }
+once_cell = "1.19"
+anyhow = "1.0"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

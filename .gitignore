@@ -1,0 +1,11 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/bin/
+python-sidecar/__pycache__/
+python-sidecar/build/
+python-sidecar/dist/
+python-sidecar/*.spec
+.venv/
+*.pyc
+.DS_Store
