@@ -11,7 +11,7 @@
 
 ```
 Tauri 프론트(React)  ──invoke──▶  Rust 코어  ──HTTP:8765──▶  Python 사이드카  ──11434──▶  Ollama
-  P1~P5 UI                        커맨드 프록시              ffmpeg·Whisper·VLM·임베딩      Qwen3·Qwen2.5-VL·bge-m3
+  P1~P5 UI                        커맨드 프록시              ffmpeg·Qwen3-ASR·VLM·임베딩    Qwen3·Qwen2.5-VL·bge-m3
 ```
 
 UI와 분석 로직이 분리돼 있어(개발자 지침) 추후 웹 전환 시 사이드카를 그대로 재사용할 수 있습니다.
@@ -29,7 +29,7 @@ Rust 코어(`src-tauri/src/sidecar.rs`)가 앱 시작 시 Ollama 서버와 Pytho
 ## 분석 파이프라인 (`python-sidecar/analyzer.py`)
 
 1. **전처리** `preprocess.py` — ffmpeg로 16kHz wav 추출 + 음성 유무 감지, OpenCV로 키프레임 N장 + 초점(라플라시안) 측정
-2. **STT** `stt.py` — 음성이 있을 때만 MLX Whisper(`whisper-large-v3-turbo`)로 자막+타임스탬프
+2. **STT** `stt.py` — 음성이 있을 때만 Qwen3-ASR(MLX, `Qwen3-ASR-1.7B-8bit`)로 자막 생성
 3. **VLM** `vlm.py` — 모든 영상에 Qwen2.5-VL로 키프레임 장면 설명 (음성 없는 B롤도 분석)
 4. **융합** `llm.py` — Qwen3로 자막+시각설명 → 한줄요약·장면목록·키워드·인물 (JSON)
 5. **추천도** `embed.py` + `scoring.py` — `0.7×연관성(bge-m3 코사인) + 0.3×기술품질(초점+오디오)`
@@ -48,7 +48,7 @@ RAM을 감지해 모델 티어를 자동 선택합니다(16GB→8b/3b, 24~32GB�
 llm   = "qwen3:8b"        # ""로 비우면 RAM 용량에 맞춰 자동 선택
 vlm   = "qwen2.5vl:3b"
 embed = "bge-m3"
-whisper = "mlx-community/whisper-large-v3-turbo"
+asr   = "mlx-community/Qwen3-ASR-1.7B-8bit"
 
 [scoring]
 weight_relevance = 0.7
@@ -77,7 +77,7 @@ conda activate preview
 cd python-sidecar && pip install -r requirements.txt
 ```
 
-로컬 모델(`qwen3:8b` · `qwen2.5vl:3b` · `bge-m3` · Whisper)은 **미리 받을 필요가 없습니다** —
+로컬 모델(`qwen3:8b` · `qwen2.5vl:3b` · `bge-m3` · Qwen3-ASR)은 **미리 받을 필요가 없습니다** —
 앱 첫 실행 시 셋업 화면이 없는 것만 자동으로 받습니다(아래 "첫 실행 셋업" 참고).
 미리 받고 싶다면 `ollama pull qwen3:8b qwen2.5vl:3b bge-m3`.
 
@@ -114,7 +114,7 @@ npm run dev                 # http://localhost:1420  → 우상단 "데모 모�
 
 - 앱 시작 시 Rust가 Ollama 서버를 확보합니다(시스템에 있으면 재사용, 없으면 동봉 바이너리 실행).
 - 첫 실행 셋업 화면이 의존성을 검사하고 **없는 것만** 내려받습니다:
-  - 이미 받은 모델/Whisper는 건너뜀 (`ollama list` + HF 캐시 확인)
+  - 이미 받은 모델/Qwen3-ASR은 건너뜀 (`ollama list` + HF 캐시 확인)
   - 누락분만 다운로드하며 항목별 + 전체 **진행률(%)**을 표시
 - ffmpeg는 앱에 동봉되며, 개발 모드에서 없으면 안내만 표시합니다.
 
@@ -144,7 +144,7 @@ npm run tauri:build
 
 ## 개발 우선순위 (MVP)
 
-1. ✅ 영상 → Whisper/VLM → 표 자동 완성 (수직 슬라이스)
+1. ✅ 영상 → Qwen3-ASR/VLM → 표 자동 완성 (수직 슬라이스)
 2. ✅ 기획안 업로드 + 추천도 계산
 3. ✅ 필터 · 상세페이지
 

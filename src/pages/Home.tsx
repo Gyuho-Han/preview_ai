@@ -18,6 +18,19 @@ export default function Home() {
       .finally(() => setLoading(false));
   }, []);
 
+  async function deleteProject(e: React.MouseEvent, p: ProjectSummary) {
+    e.stopPropagation(); // 카드 클릭(이동) 방지
+    if (!confirm(`'${p.name}' 프로젝트를 삭제할까요? 분석된 클립도 함께 삭제됩니다.`)) return;
+    const prev = projects;
+    setProjects((list) => list.filter((x) => x.id !== p.id)); // 낙관적 업데이트
+    try {
+      await api.deleteProject(p.id);
+    } catch {
+      setProjects(prev); // 실패 시 롤백
+      alert("삭제에 실패했습니다.");
+    }
+  }
+
   return (
     <div>
       <div className="row spread">
@@ -42,6 +55,13 @@ export default function Home() {
               className="card project-card"
               onClick={() => nav(`/project/${p.id}`)}
             >
+              <button
+                className="card-delete"
+                title="프로젝트 삭제"
+                onClick={(e) => deleteProject(e, p)}
+              >
+                ×
+              </button>
               <h3>{p.name}</h3>
               <div className="muted">{p.shooting_period || "촬영 기간 미정"}</div>
               <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>

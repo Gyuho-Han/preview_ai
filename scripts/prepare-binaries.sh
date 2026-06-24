@@ -41,7 +41,7 @@ echo "▶ Python 사이드카 PyInstaller 번들"
 cd "$ROOT/python-sidecar"
 pip show pyinstaller >/dev/null 2>&1 || pip install pyinstaller
 pyinstaller --onefile --name preview-sidecar \
-  --collect-all mlx_whisper \
+  --collect-all mlx_audio \
   --collect-all mlx \
   --hidden-import uvicorn.logging \
   --hidden-import uvicorn.protocols \

@@ -51,7 +51,7 @@ export default function Setup({ onReady }: { onReady: () => void }) {
     );
   }
 
-  // 자동설치 대상(모델/Whisper)만 진행률 계산 — ffmpeg/ollama 서버는 별도
+  // 자동설치 대상(모델/Qwen3-ASR)만 진행률 계산 — ffmpeg/ollama 서버는 별도
   const installable = snap.items.filter((i) => i.kind === "ollama_model" || i.kind === "hf_model");
   const missing = installable.filter((i) => i.status !== "present" && i.status !== "done");
   const overall = installable.length

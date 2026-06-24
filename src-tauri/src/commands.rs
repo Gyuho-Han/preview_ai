@@ -93,6 +93,16 @@ pub async fn recompute_scores(pid: String) -> Result<Value, String> {
     post(&format!("/projects/{pid}/recompute"), serde_json::json!({})).await
 }
 
+#[tauri::command]
+pub async fn delete_project(pid: String) -> Result<Value, String> {
+    delete(&format!("/projects/{pid}")).await
+}
+
+#[tauri::command]
+pub async fn delete_clip(cid: String) -> Result<Value, String> {
+    delete(&format!("/clips/{cid}")).await
+}
+
 // ---- 내부 HTTP 헬퍼 --------------------------------------------------------
 async fn get(path: &str) -> Result<Value, String> {
     let c = client().await;
@@ -109,5 +119,11 @@ async fn post(path: &str, body: Value) -> Result<Value, String> {
 async fn put(path: &str, body: Value) -> Result<Value, String> {
     let c = client().await;
     let resp = c.put(format!("{SIDECAR_BASE}{path}")).json(&body).send().await.map_err(|e| e.to_string())?;
+    resp.json::<Value>().await.map_err(|e| e.to_string())
+}
+
+async fn delete(path: &str) -> Result<Value, String> {
+    let c = client().await;
+    let resp = c.delete(format!("{SIDECAR_BASE}{path}")).send().await.map_err(|e| e.to_string())?;
     resp.json::<Value>().await.map_err(|e| e.to_string())
 }

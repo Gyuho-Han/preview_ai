@@ -1,7 +1,7 @@
 """베스트 파이프라인 오케스트레이션 (문서 2번 그대로).
 
 [영상] → ffmpeg(오디오/키프레임/음성감지)
-       → (음성 있음) MLX Whisper 자막
+       → (음성 있음) Qwen3-ASR(MLX) 자막
        → Qwen2.5-VL 키프레임 장면 설명 (모든 영상)
        → Qwen3 융합 (한줄요약·장면·키워드·인물)
        → bge-m3 임베딩 → 추천도(0.7×연관성 + 0.3×기술품질)
@@ -62,7 +62,7 @@ def analyze_video(video_path: str,
         # 3. STT (음성 있을 때만)
         transcript = stt.Transcript(text="", segments=[])
         if pre.has_speech and pre.audio_path:
-            _p("음성 인식(Whisper)", 35)
+            _p("음성 인식(Qwen3-ASR)", 35)
             transcript = stt.transcribe(pre.audio_path)
         else:
             _p("음성 없음 — VLM 단독 분기", 35)

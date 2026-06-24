@@ -96,7 +96,7 @@ export default function ClipDetail() {
           </div>
           {clip.transcript && (
             <div className="card" style={{ marginTop: 14 }}>
-              <h2 style={{ marginTop: 0 }}>자막 (Whisper)</h2>
+              <h2 style={{ marginTop: 0 }}>자막 (Qwen3-ASR)</h2>
               <p className="muted" style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{clip.transcript}</p>
             </div>
           )}
