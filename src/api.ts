@@ -153,6 +153,16 @@ export const api = {
     if (useMock) return { updated: 0 };
     return isTauri ? invoke("recompute_scores", { pid }) : http(`/projects/${pid}/recompute`, { method: "POST" });
   },
+
+  async deleteProject(pid: string): Promise<{ ok: boolean }> {
+    if (useMock) return mockApi.deleteProject(pid);
+    return isTauri ? invoke("delete_project", { pid }) : http(`/projects/${pid}`, { method: "DELETE" });
+  },
+
+  async deleteClip(cid: string): Promise<{ ok: boolean }> {
+    if (useMock) return mockApi.deleteClip(cid);
+    return isTauri ? invoke("delete_clip", { cid }) : http(`/clips/${cid}`, { method: "DELETE" });
+  },
 };
 
 // 로컬 영상/문서 파일 선택 (Tauri dialog). 브라우저에선 미지원.

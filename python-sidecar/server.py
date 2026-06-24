@@ -128,7 +128,7 @@ def health() -> dict:
             "llm": settings.llm_model,
             "vlm": settings.vlm_model,
             "embed": settings.embed_model,
-            "whisper": settings.whisper_model,
+            "asr": settings.asr_model,
         },
         "concurrency": settings.concurrency,
     }
@@ -194,6 +194,51 @@ def get_project(pid: str) -> dict:
     if not p:
         raise HTTPException(404, "project not found")
     return {"id": pid, **{k: v for k, v in p.items() if not k.startswith("_")}}
+
+
+def _remove_clip_files(clip: dict) -> None:
+    """클립의 썸네일·업로드 원본 파일을 디스크에서 정리(베스트 에포트)."""
+    for key in ("thumbnail", "filepath"):
+        path = clip.get(key)
+        # 업로드 모드로 복사된 파일만 삭제(앱 데이터 디렉토리 내부). Tauri 로컬
+        # 원본 경로는 사용자 소유이므로 건드리지 않는다.
+        if path and os.path.isfile(path) and os.path.abspath(path).startswith(os.path.abspath(DATA_DIR)):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+@app.delete("/clips/{cid}")
+def delete_clip(cid: str) -> dict:
+    """단일 클립(영상 분석 결과) 삭제."""
+    with _lock:
+        clip = _clips.pop(cid, None)
+    if not clip:
+        raise HTTPException(404, "clip not found")
+    _remove_clip_files(clip)
+    _persist()
+    return {"ok": True, "id": cid}
+
+
+@app.delete("/projects/{pid}")
+def delete_project(pid: str) -> dict:
+    """프로젝트 + 소속 클립 전부 삭제."""
+    with _lock:
+        if pid not in _projects:
+            raise HTTPException(404, "project not found")
+        _projects.pop(pid, None)
+        clip_ids = [cid for cid, c in _clips.items() if c.get("project_id") == pid]
+        removed = [_clips.pop(cid) for cid in clip_ids]
+    for clip in removed:
+        _remove_clip_files(clip)
+    # 업로드 디렉토리 통째로 정리
+    upload_dir = os.path.join(DATA_DIR, "uploads", pid)
+    if os.path.isdir(upload_dir):
+        import shutil
+        shutil.rmtree(upload_dir, ignore_errors=True)
+    _persist()
+    return {"ok": True, "id": pid, "deleted_clips": len(removed)}
 
 
 # ---- P2 기획안 분석 (AI 자동완성) ------------------------------------------
@@ -263,9 +308,12 @@ def _run_analysis(clip_id: str, project_id: str, video_path: str) -> None:
             _clips[clip_id]["status"] = "done"
             _clips[clip_id]["progress"] = 100
     except Exception as e:
+        import traceback
+        # 백그라운드 스레드 예외는 기본적으로 콘솔에 안 찍히므로 명시적으로 출력
+        traceback.print_exc()
         with _lock:
             _clips[clip_id]["status"] = "error"
-            _clips[clip_id]["error"] = str(e)
+            _clips[clip_id]["error"] = f"{type(e).__name__}: {e}"
     _persist()
 
 

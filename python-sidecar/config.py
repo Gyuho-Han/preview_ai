@@ -80,7 +80,7 @@ class Settings:
     llm_model: str = ""
     vlm_model: str = ""
     embed_model: str = ""
-    whisper_model: str = ""
+    asr_model: str = ""
 
     weight_relevance: float = 0.7
     weight_quality: float = 0.3
@@ -99,8 +99,10 @@ class Settings:
         self.ollama_host = _pick("OLLAMA_HOST", "ollama", "host",
                                  default="http://localhost:11434")
         self.embed_model = _pick("EMBED_MODEL", "models", "embed", default="bge-m3")
-        self.whisper_model = _pick("WHISPER_MODEL", "models", "whisper",
-                                   default="mlx-community/whisper-large-v3-turbo")
+        # STT: Qwen3-ASR (MLX). 8-bit 기본(품질 ≈ bf16, 용량/속도 유리).
+        # 최고 정확도는 -bf16, 최경량은 -4bit 변형으로 교체 가능.
+        self.asr_model = _pick("ASR_MODEL", "models", "asr",
+                               default="mlx-community/Qwen3-ASR-1.7B-8bit")
 
         # 추천도/전처리 파라미터 (파일 우선)
         self.weight_relevance = float(_pick("WEIGHT_RELEVANCE", "scoring", "weight_relevance", default=0.7))

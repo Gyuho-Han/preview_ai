@@ -1,10 +1,10 @@
 """첫 실행 의존성 셋업.
 
-각 구성요소(Ollama 서버·LLM/VLM/임베딩 모델·Whisper·ffmpeg)가 이미 있는지
+각 구성요소(Ollama 서버·LLM/VLM/임베딩 모델·Qwen3-ASR·ffmpeg)가 이미 있는지
 검사하고, **없는 것만** 다운로드한다. 진행률은 인메모리로 추적해 프론트가 폴링.
 
 - Ollama 모델: `ollama pull`의 total/completed로 정확한 % 표시
-- Whisper(MLX): HuggingFace 캐시로 다운로드, 캐시 폴더 용량으로 근사 % 표시
+- Qwen3-ASR(MLX): HuggingFace 캐시로 다운로드, 캐시 폴더 용량으로 근사 % 표시
 - ffmpeg: 설치 여부만 확인(앱 번들 시 동봉되므로 자동 다운로드 대상 아님)
 """
 from __future__ import annotations
@@ -18,8 +18,8 @@ import ollama
 
 from config import settings
 
-# Whisper 대략 용량(표시용, bytes) — large-v3-turbo ≈ 1.6GB
-_WHISPER_APPROX_BYTES = int(1.6 * 1024**3)
+# Qwen3-ASR 대략 용량(표시용, bytes) — 1.7B 8-bit ≈ 2.4GB
+_ASR_APPROX_BYTES = int(2.4 * 1024**3)
 
 _lock = threading.Lock()
 # name -> {label, kind, status, pct, detail}
@@ -68,14 +68,14 @@ def _model_present(required: str, installed: set[str]) -> bool:
     return False
 
 
-def _whisper_cache_dir() -> str:
-    repo = settings.whisper_model.replace("/", "--")
+def _asr_cache_dir() -> str:
+    repo = settings.asr_model.replace("/", "--")
     home = os.environ.get("HF_HOME") or os.path.join(os.path.expanduser("~"), ".cache", "huggingface")
     return os.path.join(home, "hub", f"models--{repo}")
 
 
-def _whisper_present() -> bool:
-    snap = os.path.join(_whisper_cache_dir(), "snapshots")
+def _asr_present() -> bool:
+    snap = os.path.join(_asr_cache_dir(), "snapshots")
     if not os.path.isdir(snap):
         return False
     for _root, _dirs, files in os.walk(snap):
@@ -123,7 +123,7 @@ def check_status() -> dict:
     for key, model in _required_models().items():
         present = running and _model_present(model, installed)
         _maybe(key, f"{key.upper()} 모델 · {model}", "ollama_model", present, model)
-    _maybe("whisper", f"Whisper · {settings.whisper_model.split('/')[-1]}", "hf_model", _whisper_present())
+    _maybe("asr", f"Qwen3-ASR · {settings.asr_model.split('/')[-1]}", "hf_model", _asr_present())
 
     return snapshot()
 
@@ -154,6 +154,14 @@ def _run_install() -> None:
     global _installing
     try:
         check_status()
+
+        # ASR 모델(HuggingFace)은 Ollama와 완전히 독립적이므로 항상 먼저 시도한다.
+        # (예전엔 Ollama 미연결 시 early-return 되어 ASR을 아예 안 받는 버그가 있었음)
+        if _asr_present():
+            _set("asr", status="done", pct=100)
+        else:
+            _download_asr()
+
         if not _ollama_running():
             _set("ollama", status="blocked",
                  detail="Ollama 서버에 연결할 수 없습니다. 앱이 자동 실행하거나 `ollama serve`가 필요합니다.")
@@ -165,11 +173,6 @@ def _run_install() -> None:
                 _set(key, status="done", pct=100)
                 continue
             _pull_model(key, model)
-
-        if _whisper_present():
-            _set("whisper", status="done", pct=100)
-        else:
-            _download_whisper()
     finally:
         with _lock:
             _installing = False
@@ -196,15 +199,15 @@ def _pull_model(key: str, model: str) -> None:
         _set(key, status="error", detail=str(e))
 
 
-def _download_whisper() -> None:
-    _set("whisper", status="downloading", pct=0, detail="다운로드 준비 중…")
-    target = _whisper_cache_dir()
+def _download_asr() -> None:
+    _set("asr", status="downloading", pct=0, detail="다운로드 준비 중…")
+    target = _asr_cache_dir()
     done = {"flag": False, "err": None}
 
     def _dl() -> None:
         try:
             from huggingface_hub import snapshot_download
-            snapshot_download(repo_id=settings.whisper_model)
+            snapshot_download(repo_id=settings.asr_model)
         except Exception as e:  # noqa: BLE001
             done["err"] = str(e)
         finally:
@@ -213,11 +216,11 @@ def _download_whisper() -> None:
     threading.Thread(target=_dl, daemon=True).start()
     while not done["flag"]:
         size = _dir_size(target) if os.path.isdir(target) else 0
-        pct = min(99, int(size / _WHISPER_APPROX_BYTES * 100))
-        _set("whisper", pct=pct, detail=f"{size // (1024**2)} MB")
+        pct = min(99, int(size / _ASR_APPROX_BYTES * 100))
+        _set("asr", pct=pct, detail=f"{size // (1024**2)} MB")
         time.sleep(0.8)
 
     if done["err"]:
-        _set("whisper", status="error", detail=done["err"])
+        _set("asr", status="error", detail=done["err"])
     else:
-        _set("whisper", status="done", pct=100, detail="완료")
+        _set("asr", status="done", pct=100, detail="완료")

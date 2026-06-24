@@ -26,6 +26,8 @@ fn main() {
             commands::list_clips,
             commands::get_clip,
             commands::recompute_scores,
+            commands::delete_project,
+            commands::delete_clip,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

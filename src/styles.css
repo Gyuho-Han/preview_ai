@@ -72,9 +72,19 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
 
 /* P1 프로젝트 그리드 */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
-.project-card { cursor: pointer; transition: border-color .15s; }
+.project-card { cursor: pointer; transition: border-color .15s; position: relative; }
 .project-card:hover { border-color: var(--accent); }
-.project-card h3 { margin: 0 0 6px; font-size: 15px; }
+.project-card h3 { margin: 0 0 6px; font-size: 15px; padding-right: 22px; }
+
+/* 삭제 버튼 (프로젝트 카드 우상단 + 클립 행) */
+.card-delete, .row-delete {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--muted); line-height: 1; padding: 2px 6px; border-radius: 6px;
+  font-size: 18px; transition: color .15s, background .15s;
+}
+.card-delete { position: absolute; top: 8px; right: 8px; }
+.row-delete { font-size: 16px; }
+.card-delete:hover, .row-delete:hover { color: #fff; background: #e5484d; }
 
 /* P3 분할 레이아웃 */
 .split { display: grid; grid-template-columns: 60% 40%; gap: 16px; height: calc(100vh - 160px); }

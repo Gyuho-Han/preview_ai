@@ -159,4 +159,15 @@ export const mockApi = {
   async getClip(cid: string): Promise<Clip> {
     return clips[cid] ?? seedClip(0);
   },
+  async deleteProject(pid: string): Promise<{ ok: boolean }> {
+    delete projects[pid];
+    Object.keys(clips).forEach((cid) => {
+      if (clips[cid].project_id === pid) delete clips[cid];
+    });
+    return { ok: true };
+  },
+  async deleteClip(cid: string): Promise<{ ok: boolean }> {
+    delete clips[cid];
+    return { ok: true };
+  },
 };

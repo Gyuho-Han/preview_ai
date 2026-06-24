@@ -82,7 +82,7 @@ def _has_audio_stream(video_path: str) -> bool:
 
 
 def extract_audio(video_path: str, workdir: str) -> str:
-    """16kHz mono wav 추출 (Whisper 입력 규격)."""
+    """16kHz mono wav 추출 (Qwen3-ASR 입력 규격)."""
     out = os.path.join(workdir, "audio.wav")
     subprocess.run(
         ["ffmpeg", "-y", "-i", video_path, "-ac", "1", "-ar", "16000",

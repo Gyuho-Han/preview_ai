@@ -58,6 +58,17 @@ export default function ProjectHome() {
     refresh();
   }
 
+  async function deleteClip(c: Clip) {
+    if (!confirm(`'${c.filename}' 영상을 목록에서 삭제할까요?`)) return;
+    setClips((list) => list.filter((x) => x.id !== c.id)); // 낙관적 업데이트
+    try {
+      await api.deleteClip(c.id);
+    } catch {
+      alert("삭제에 실패했습니다.");
+      refresh();
+    }
+  }
+
   async function saveCtx() {
     if (!ctx) return;
     await api.updatePlan(pid, ctx as PlanContext);
@@ -100,13 +111,27 @@ export default function ProjectHome() {
               <div key={c.id} style={{ marginBottom: 12 }}>
                 <div className="row spread">
                   <span>{c.filename}</span>
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    {c.status === "done" ? "완료" : c.status === "error" ? `오류` : `${c.stage} ${c.progress}%`}
+                  <span className="row" style={{ gap: 8, alignItems: "center" }}>
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {c.status === "done" ? "완료" : c.status === "error" ? `오류` : `${c.stage} ${c.progress}%`}
+                    </span>
+                    <button
+                      className="row-delete"
+                      title="영상 삭제"
+                      onClick={() => deleteClip(c)}
+                    >
+                      ×
+                    </button>
                   </span>
                 </div>
                 <div className="progress">
                   <div style={{ width: `${c.progress}%` }} />
                 </div>
+                {c.status === "error" && c.error && (
+                  <div className="muted" style={{ fontSize: 11, marginTop: 4, color: "#e5484d", whiteSpace: "pre-wrap" }}>
+                    {c.error}
+                  </div>
+                )}
               </div>
             ))
           )}
