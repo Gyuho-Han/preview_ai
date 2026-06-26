@@ -62,20 +62,27 @@ export default function Setup({ onReady }: { onReady: () => void }) {
   const ffmpeg = snap.items.find((i) => i.name === "ffmpeg");
 
   return (
-    <div style={{ maxWidth: 640, margin: "40px auto" }}>
-      <h1>설치 준비</h1>
-      <p className="muted">
-        로컬에서 분석에 필요한 구성요소를 확인합니다. 이미 있는 항목은 건너뛰고, 없는 것만 내려받습니다.
-      </p>
+    <div className="setup">
+      <div className="setup-head">
+        <div className="setup-logo">⚙</div>
+        <h1>설치 준비</h1>
+        <p className="muted">
+          로컬 분석에 필요한 구성요소를 확인합니다.<br />
+          이미 있는 항목은 건너뛰고, 없는 것만 내려받습니다.
+        </p>
+      </div>
 
       {ollama && ollama.status !== "present" && (
-        <div className="card" style={{ borderColor: "var(--yellow)", marginBottom: 12 }}>
-          ⚠ Ollama 서버에 연결할 수 없습니다. 데스크탑 앱에서는 자동 실행되며, 개발 모드라면 별도 터미널에서{" "}
-          <code>ollama serve</code>를 켜주세요.
+        <div className="setup-warn">
+          <span>⚠</span>
+          <div>
+            Ollama 서버에 연결할 수 없습니다. 데스크탑 앱에서는 자동 실행되며, 개발 모드라면 별도 터미널에서{" "}
+            <code>ollama serve</code>를 켜주세요.
+          </div>
         </div>
       )}
 
-      <div className="card">
+      <div className="card setup-list">
         {snap.items.map((it) => (
           <Row key={it.name} item={it} />
         ))}
@@ -118,26 +125,27 @@ export default function Setup({ onReady }: { onReady: () => void }) {
 }
 
 function Row({ item }: { item: SetupItem }) {
-  const cls = item.status === "error" ? "c-red" : item.status === "present" || item.status === "done" ? "c-green" : "muted";
+  const ok = item.status === "present" || item.status === "done";
+  const state = item.status === "error" ? "error" : ok ? "ok" : item.status === "downloading" ? "busy" : "wait";
   return (
-    <div style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
+    <div className="setup-item">
       <div className="row spread">
-        <span>
-          <span className={cls} style={{ marginRight: 8 }}>{icon(item.status)}</span>
+        <span className="setup-name">
+          <span className={`setup-ic setup-ic-${state}`}>{icon(item.status)}</span>
           {item.label}
         </span>
-        <span className={`${cls}`} style={{ fontSize: 12 }}>
+        <span className={`setup-badge setup-badge-${state}`}>
           {STATUS_LABEL[item.status] ?? item.status}
           {item.status === "downloading" && ` ${item.pct}%`}
         </span>
       </div>
       {item.status === "downloading" && (
-        <div className="progress" style={{ marginTop: 6 }}>
+        <div className="progress" style={{ marginTop: 8 }}>
           <div style={{ width: `${item.pct}%` }} />
         </div>
       )}
       {item.detail && (item.status === "downloading" || item.status === "error" || item.status === "blocked") && (
-        <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{item.detail}</div>
+        <div className="muted" style={{ fontSize: 11, marginTop: 5 }}>{item.detail}</div>
       )}
     </div>
   );

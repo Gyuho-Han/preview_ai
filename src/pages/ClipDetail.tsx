@@ -5,6 +5,36 @@ import { api } from "../api";
 import type { Clip } from "../types";
 import { fmtDuration, colorClass } from "../util";
 
+const DONUT_C = 2 * Math.PI * 52;
+
+// 추천도 원형 게이지 (마운트 시 채워지는 애니메이션)
+function DonutScore({ value, cc }: { value: number; cc: string }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShown(true), 80);
+    return () => clearTimeout(t);
+  }, []);
+  const offset = DONUT_C * (1 - (shown ? value : 0) / 100);
+  return (
+    <div className="rec-donut">
+      <svg viewBox="0 0 120 120" className={`c-${cc}`}>
+        <circle className="rec-track" cx="60" cy="60" r="52" />
+        <circle
+          className="rec-prog"
+          cx="60"
+          cy="60"
+          r="52"
+          style={{ strokeDasharray: DONUT_C, strokeDashoffset: offset }}
+        />
+      </svg>
+      <div className="rec-center">
+        <div className={`rec-num c-${cc}`}>{value}<small>%</small></div>
+        <div className="rec-cap">추천도</div>
+      </div>
+    </div>
+  );
+}
+
 export default function ClipDetail() {
   const { pid = "", cid = "" } = useParams();
   const nav = useNavigate();
@@ -48,12 +78,9 @@ export default function ClipDetail() {
             </div>
             <p style={{ marginTop: 14, fontSize: 15 }}>{clip.one_line}</p>
           </div>
-          <div style={{ textAlign: "center" }}>
-            <div className={`big-score c-${cc}`}>{clip.recommendation ?? 0}%</div>
-            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>추천도</div>
-            <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
-              연관성 {clip.relevance ?? 0} · 품질 {clip.quality ?? 0}
-            </div>
+          <div className="rec-box">
+            <DonutScore value={clip.recommendation ?? 0} cc={cc} />
+            <div className="rec-sub">연관성 {clip.relevance ?? 0} · 품질 {clip.quality ?? 0}</div>
           </div>
         </div>
       </div>
@@ -89,10 +116,13 @@ export default function ClipDetail() {
             <p>{clip.ai_comment || "—"}</p>
           </div>
           <div className="card" style={{ marginTop: 14 }}>
-            <h2 style={{ marginTop: 0 }}>NLE 추출</h2>
-            <button className="secondary" disabled style={{ width: "100%", marginBottom: 8 }}>Premiere Pro로 추출</button>
-            <button className="secondary" disabled style={{ width: "100%" }}>DaVinci Resolve로 추출</button>
-            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>추후 사이클에서 활성화됩니다.</p>
+            <div className="row spread" style={{ marginBottom: 12 }}>
+              <h2 style={{ margin: 0 }}>NLE 추출</h2>
+              <span className="soon-badge">곧 제공</span>
+            </div>
+            <button className="secondary" disabled style={{ width: "100%", marginBottom: 8, justifyContent: "center" }}>Premiere Pro로 추출</button>
+            <button className="secondary" disabled style={{ width: "100%", justifyContent: "center" }}>DaVinci Resolve로 추출</button>
+            <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>추후 사이클에서 활성화됩니다.</p>
           </div>
           {clip.transcript && (
             <div className="card" style={{ marginTop: 14 }}>

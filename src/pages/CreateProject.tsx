@@ -3,6 +3,7 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, pickPlan, isTauri } from "../api";
 import type { PlanContext } from "../types";
+import { toast } from "../ui/feedback";
 
 const EMPTY: PlanContext = {
   title: "", shooting_period: "", topic: "",
@@ -38,8 +39,9 @@ export default function CreateProject() {
         const id = await ensureProject();
         const result = await api.uploadPlan(id, path);
         setCtx({ ...EMPTY, ...result });
+        toast("기획안 분석 완료 — 아래 정보를 확인하세요.");
       } catch (e) {
-        alert(`기획안 분석 실패: ${e}`);
+        toast(`기획안 분석 실패: ${e}`, "error");
       } finally {
         setAnalyzing(false);
       }
@@ -57,8 +59,9 @@ export default function CreateProject() {
       const id = await ensureProject();
       const result = await api.uploadPlanFile(id, file);
       setCtx({ ...EMPTY, ...result });
+      toast("기획안 분석 완료 — 아래 정보를 확인하세요.");
     } catch (err) {
-      alert(`기획안 분석 실패: ${err}`);
+      toast(`기획안 분석 실패: ${err}`, "error");
     } finally {
       setAnalyzing(false);
       e.target.value = "";
@@ -79,6 +82,7 @@ export default function CreateProject() {
       id = res.id;
     }
     await api.updatePlan(id, ctx);
+    toast("프로젝트를 저장했습니다.");
     nav(`/project/${id}`);
   }
 
@@ -139,7 +143,7 @@ export default function CreateProject() {
 
       <div className="row" style={{ marginTop: 16 }}>
         <button onClick={save}>저장하고 계속</button>
-        <button className="secondary" onClick={() => nav("/")}>취소</button>
+        <button className="secondary" onClick={() => nav("/home")}>취소</button>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import App from "./App";
+import Landing from "./pages/Landing";
 import Home from "./pages/Home";
 import CreateProject from "./pages/CreateProject";
 import ProjectHome from "./pages/ProjectHome";
@@ -14,13 +15,14 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <HashRouter>
       <Routes>
+        <Route index element={<Landing />} />
         <Route element={<App />}>
-          <Route index element={<Home />} />
+          <Route path="home" element={<Home />} />
           <Route path="new" element={<CreateProject />} />
           <Route path="project/:pid" element={<ProjectHome />} />
           <Route path="project/:pid/table" element={<TableView />} />
           <Route path="project/:pid/clip/:cid" element={<ClipDetail />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/home" replace />} />
         </Route>
       </Routes>
     </HashRouter>
