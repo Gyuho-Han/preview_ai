@@ -285,6 +285,24 @@ tbody tr:last-child td { border-bottom: none; }
   background: var(--panel-3); border: 1px solid var(--border);
 }
 
+/* 표 썸네일 호버 미리보기(B) */
+.thumb-scrub { position: relative; width: 72px; }
+.thumb-scrub .thumb { display: block; }
+.thumb-scrub .scrub-time { position: absolute; top: 2px; right: 3px; font-size: 9px;
+  padding: 0 4px; border-radius: 4px; background: rgba(0,0,0,.66); color: #fff;
+  font-variant-numeric: tabular-nums; pointer-events: none; }
+/* 아래 스크럽 바: 클릭/드래그로 시간 이동 */
+.thumb-scrub .scrub-bar { position: absolute; left: 0; right: 0; bottom: 0;
+  height: 9px; display: flex; align-items: flex-end; cursor: ew-resize; }
+.thumb-scrub .scrub-bar::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+  height: 4px; background: rgba(255,255,255,.25); border-radius: 0 0 6px 6px; }
+.thumb-scrub .scrub-fill { position: absolute; left: 0; bottom: 0; height: 4px;
+  background: var(--accent); border-radius: 0 0 0 6px; }
+.thumb-scrub .scrub-handle { position: absolute; bottom: -2px; width: 8px; height: 8px;
+  margin-left: -4px; border-radius: 50%; background: #fff; border: 1px solid var(--accent);
+  opacity: 0; transition: opacity .12s; }
+.thumb-scrub .scrub-bar.on .scrub-handle { opacity: 1; }
+
 .score { display: flex; align-items: center; gap: 10px; min-width: 130px; }
 .score-bar { flex: 1; height: 8px; background: var(--panel-3); border-radius: 999px; overflow: hidden; }
 .score-bar > div { height: 100%; border-radius: 999px; transition: width .3s; }
@@ -323,6 +341,11 @@ tbody tr:last-child td { border-bottom: none; }
   display: flex; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--border);
 }
 .scene-list li:last-child { border-bottom: none; }
+.scene-list li.scene-clickable { cursor: pointer; border-radius: 6px; transition: background .12s; }
+.scene-list li.scene-clickable:hover { background: var(--panel-2); }
+
+/* 상세페이지 영상 재생 */
+.clip-video { width: 100%; max-height: 440px; border-radius: 10px; background: #000; display: block; }
 .scene-time {
   color: var(--accent-2); font-variant-numeric: tabular-nums; min-width: 54px;
   font-weight: 700; font-size: 13px;

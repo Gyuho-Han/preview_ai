@@ -1,6 +1,7 @@
 """전처리 — ffmpeg(오디오 추출·음성 유무 감지) + OpenCV(키프레임·초점)."""
 from __future__ import annotations
 
+import glob as _glob
 import json
 import math
 import os
@@ -102,6 +103,25 @@ def _extract_camera(video_path: str) -> str:
         return model or make or ""
     except Exception:
         return ""
+
+
+def extract_filmstrip(video_path: str, out_dir: str, interval: float = 1.0,
+                      max_frames: int = 1800) -> tuple[list[str], list[float]]:
+    """표 호버 스크럽용 필름스트립 — `interval`초마다 1장씩 작은 jpg로 추출.
+    ffmpeg fps 필터로 한 번의 디코드 패스에서 뽑아 빠르다. (VLM 키프레임과 별개)"""
+    os.makedirs(out_dir, exist_ok=True)
+    interval = max(0.5, float(interval))
+    rate = 1.0 / interval  # 예: 5초 → 0.2fps
+    pattern = os.path.join(out_dir, "%04d.jpg")
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", video_path,
+         "-vf", f"fps={rate:.6g},scale=160:-2",
+         "-frames:v", str(max_frames), "-q:v", "6", pattern],
+        check=True, capture_output=True,
+    )
+    files = sorted(_glob.glob(os.path.join(out_dir, "*.jpg")))
+    times = [round(i * interval, 2) for i in range(len(files))]
+    return files, times
 
 
 def _has_audio_stream(video_path: str) -> bool:
