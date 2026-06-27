@@ -1,7 +1,7 @@
 // P3 기본페이지 — 좌 60% 영상 업로드/진행률, 우 40% 맥락 수정, 하단 탭바
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, pickVideos, pickPlan, isTauri } from "../api";
+import { api, pickVideos, pickFolder, pickPlan, isTauri } from "../api";
 import type { Clip, PlanContext } from "../types";
 import { toast, confirmDialog } from "../ui/feedback";
 
@@ -68,6 +68,20 @@ export default function ProjectHome() {
     await api.analyzeUpload(pid, vids);
     toast(`영상 ${vids.length}개 추가 — 분석을 시작합니다.`);
     refresh();
+  }
+
+  // 폴더 전체 추가 — 원본을 복사하지 않고 폴더 안 영상을 경로로 분석 (Tauri 폴더 다이얼로그)
+  async function addFolder() {
+    const folder = await pickFolder();
+    if (!folder) return;
+    try {
+      const r = await api.analyzeFolder(pid, folder);
+      toast(`영상 ${r.found}개 발견 · ${r.queued}개 분석 시작` +
+        (r.found - r.queued > 0 ? ` (이미 분석된 ${r.found - r.queued}개 제외)` : ""));
+      refresh();
+    } catch (e) {
+      toast(`폴더 분석 실패: ${e instanceof Error ? e.message : String(e)}`, "error");
+    }
   }
 
   async function reuploadPlan() {
@@ -138,6 +152,11 @@ export default function ProjectHome() {
             style={{ display: "none" }}
             onChange={onFilesPicked}
           />
+          {isTauri && (
+            <button className="secondary" style={{ width: "100%", marginTop: 8, justifyContent: "center" }} onClick={addFolder}>
+              📁 폴더 전체 추가 (복사 없이 경로로 분석)
+            </button>
+          )}
 
           <h2>분석 진행</h2>
           {clips.length === 0 ? (
