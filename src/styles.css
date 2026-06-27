@@ -285,15 +285,23 @@ tbody tr:last-child td { border-bottom: none; }
   background: var(--panel-3); border: 1px solid var(--border);
 }
 
-/* 표 썸네일 호버 스크럽(B) */
-.thumb-scrub { position: relative; width: 72px; cursor: ew-resize; }
+/* 표 썸네일 호버 미리보기(B) */
+.thumb-scrub { position: relative; width: 72px; }
 .thumb-scrub .thumb { display: block; }
-.thumb-scrub .scrub-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
-  background: rgba(255,255,255,.22); border-radius: 0 0 6px 6px; overflow: hidden; }
-.thumb-scrub .scrub-bar > div { height: 100%; background: var(--accent); }
 .thumb-scrub .scrub-time { position: absolute; top: 2px; right: 3px; font-size: 9px;
   padding: 0 4px; border-radius: 4px; background: rgba(0,0,0,.66); color: #fff;
-  font-variant-numeric: tabular-nums; }
+  font-variant-numeric: tabular-nums; pointer-events: none; }
+/* 아래 스크럽 바: 클릭/드래그로 시간 이동 */
+.thumb-scrub .scrub-bar { position: absolute; left: 0; right: 0; bottom: 0;
+  height: 9px; display: flex; align-items: flex-end; cursor: ew-resize; }
+.thumb-scrub .scrub-bar::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+  height: 4px; background: rgba(255,255,255,.25); border-radius: 0 0 6px 6px; }
+.thumb-scrub .scrub-fill { position: absolute; left: 0; bottom: 0; height: 4px;
+  background: var(--accent); border-radius: 0 0 0 6px; }
+.thumb-scrub .scrub-handle { position: absolute; bottom: -2px; width: 8px; height: 8px;
+  margin-left: -4px; border-radius: 50%; background: #fff; border: 1px solid var(--accent);
+  opacity: 0; transition: opacity .12s; }
+.thumb-scrub .scrub-bar.on .scrub-handle { opacity: 1; }
 
 .score { display: flex; align-items: center; gap: 10px; min-width: 130px; }
 .score-bar { flex: 1; height: 8px; background: var(--panel-3); border-radius: 999px; overflow: hidden; }

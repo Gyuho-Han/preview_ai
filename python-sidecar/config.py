@@ -97,6 +97,12 @@ class Settings:
     scene_threshold: float = 0.5      # 히스토그램 Bhattacharyya 거리 컷 임계값(0~1)
     scene_sample_fps: float = 2.0     # 장면 스캔 시 초당 검사 프레임 수
 
+    # 동시 분석 클립 수(0=RAM 기준 자동). 올리면 전처리가 추론과 겹쳐 빨라짐.
+    concurrency_override: int = 0
+
+    # 표 호버 스크럽 필름스트립 간격(초). 기본 1초당 1프레임.
+    scrub_interval: float = 1.0
+
     ram_gb: int = dataclasses.field(default_factory=_total_ram_gb)
 
     def __post_init__(self) -> None:
@@ -121,6 +127,8 @@ class Settings:
         self.scene_detect = bool(_pick("SCENE_DETECT", "preprocess", "scene_detect", default=True))
         self.scene_threshold = float(_pick("SCENE_THRESHOLD", "preprocess", "scene_threshold", default=0.5))
         self.scene_sample_fps = float(_pick("SCENE_SAMPLE_FPS", "preprocess", "scene_sample_fps", default=2.0))
+        self.concurrency_override = int(_pick("CONCURRENCY", "runtime", "concurrency", default=0))
+        self.scrub_interval = float(_pick("SCRUB_INTERVAL", "preprocess", "scrub_interval", default=1.0))
 
         # --- LLM/VLM: 지정 없으면 RAM 티어로 자동 선택 ---
         llm = _pick("LLM_MODEL", "models", "llm", default=None)
@@ -135,6 +143,9 @@ class Settings:
 
     @property
     def concurrency(self) -> int:
+        # models.config [runtime] concurrency / 환경변수 CONCURRENCY 로 강제 가능(0=자동)
+        if self.concurrency_override and self.concurrency_override > 0:
+            return self.concurrency_override
         if self.ram_gb >= 48:
             return 3
         if self.ram_gb >= 24:

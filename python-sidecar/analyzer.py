@@ -18,6 +18,7 @@ import llm
 import preprocess
 import scoring
 import stt
+from config import settings
 import vlm
 
 # 진행률 콜백 시그니처: (stage: str, pct: int) -> None
@@ -112,27 +113,43 @@ def analyze_video(video_path: str,
 
         _p("완료", 100)
 
-        # 표 1행 (P4 9개 컬럼 + 상세 P5 데이터)
-        # 키프레임 전체를 workdir 정리 전에 영구 디렉토리로 복사
-        #   → 첫 장면=썸네일, 전체=표 호버 스크럽(B)용 필름스트립
+        # 표/상세용 보존 데이터
+        #   - thumbnail: 첫 VLM 키프레임(대표 장면)
+        #   - frames/frame_times: 표 호버 스크럽용 필름스트립(5초당 1장)
         thumb = None
         frames: list[str] = []
-        if pre.keyframes:
-            if frames_dir:
-                os.makedirs(frames_dir, exist_ok=True)
+        frame_times: list[float] = []
+        if frames_dir:
+            os.makedirs(frames_dir, exist_ok=True)
+            if pre.keyframes:
+                thumb = os.path.join(frames_dir, "thumb.jpg")
+                shutil.copyfile(pre.keyframes[0], thumb)
+            # 스크럽 필름스트립(5초당 1프레임) — VLM 키프레임과 별개로 촘촘히
+            try:
+                frames, frame_times = preprocess.extract_filmstrip(
+                    video_path, os.path.join(frames_dir, "strip"),
+                    interval=settings.scrub_interval,
+                )
+            except Exception:
+                frames, frame_times = [], []
+            if not frames and pre.keyframes:   # 폴백: VLM 키프레임 사용
                 for i, kf in enumerate(pre.keyframes):
-                    dest = os.path.join(frames_dir, f"{i:03d}.jpg")
-                    shutil.copyfile(kf, dest)
-                    frames.append(dest)
-            else:
-                frames = list(pre.keyframes)
-            thumb = frames[0] if frames else None
+                    d = os.path.join(frames_dir, f"{i:03d}.jpg")
+                    shutil.copyfile(kf, d)
+                    frames.append(d)
+                frame_times = list(pre.keyframe_times)
+            if thumb is None and frames:
+                thumb = frames[0]
+        elif pre.keyframes:
+            frames = list(pre.keyframes)
+            frame_times = list(pre.keyframe_times)
+            thumb = frames[0]
         return {
             "filename": os.path.basename(video_path),
             "filepath": video_path,
             "thumbnail": thumb,
-            "frames": frames,                       # 호버 스크럽용 키프레임 경로들
-            "frame_times": pre.keyframe_times,       # 각 프레임의 실제 시각(초)
+            "frames": frames,                       # 호버 스크럽 필름스트립(5초 간격)
+            "frame_times": frame_times,              # 각 프레임 시각(초)
             "duration_sec": pre.duration_sec,
             "date": pre.recorded_date,
             "place": content.get("place", ""),
