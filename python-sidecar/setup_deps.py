@@ -199,15 +199,34 @@ def _pull_model(key: str, model: str) -> None:
         _set(key, status="error", detail=str(e))
 
 
+def _configure_hf_download() -> None:
+    """다운로더 설정.
+
+    기본은 안정적인 표준 다운로더(진행률이 꾸준히 갱신됨). hf_transfer는 빠르지만
+    일부 네트워크에서 0%에 멈추는(hang) 문제가 있어, 환경변수 PREVIEW_FAST_DOWNLOAD=1
+    을 명시했을 때만 켠다. 그 외에는 명시적으로 꺼서(전역 설정이 켜져 있어도) 안정성 우선."""
+    if os.environ.get("PREVIEW_FAST_DOWNLOAD") == "1":
+        try:
+            import hf_transfer  # noqa: F401
+            os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+            return
+        except Exception:
+            pass
+    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+
+
 def _download_asr() -> None:
     _set("asr", status="downloading", pct=0, detail="다운로드 준비 중…")
     target = _asr_cache_dir()
     done = {"flag": False, "err": None}
 
+    _configure_hf_download()
+
     def _dl() -> None:
         try:
             from huggingface_hub import snapshot_download
-            snapshot_download(repo_id=settings.asr_model)
+            # 표준 다운로더 + 파일 병렬(max_workers). hf_transfer는 옵트인(위 설정 참고)
+            snapshot_download(repo_id=settings.asr_model, max_workers=4)
         except Exception as e:  # noqa: BLE001
             done["err"] = str(e)
         finally:

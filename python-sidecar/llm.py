@@ -108,12 +108,12 @@ def analyze_content(transcript_text: str, scene_descriptions: list[str],
 {{
   "one_line": "한 줄 요약 (편집자가 5초 안에 판단 가능하게)",
   "summary": "3~5줄 요약",
-  "scenes": [{{"time": "mm:ss 또는 빈값", "desc": "장면 설명"}}],
   "keywords": ["키워드 5~10개"],
   "people": ["추정 등장인물/역할"],
   "place": "추정 장소",
   "ai_comment": "편집 관점 코멘트 한두 문장"
 }}
+※ 타임스탬프(장면 시각)는 시스템이 별도로 생성하므로 너는 만들지 마라.
 
 참고 기획안 키워드: {", ".join(plan_keywords) or "(없음)"}
 

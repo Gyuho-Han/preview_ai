@@ -61,6 +61,8 @@ export interface Clip {
   error?: string;
 
   thumbnail?: string;
+  frames?: string[];          // 호버 스크럽용 키프레임 경로(서버 보관)
+  frame_times?: number[];     // 각 키프레임의 실제 시각(초)
   duration_sec?: number;
   date?: string;
   place?: string;

@@ -21,6 +21,7 @@ class Preprocessed:
     has_speech: bool
     audio_rms_dbfs: float
     recorded_date: str = ""         # 촬영 날짜 YYYY-MM-DD (메타 → 파일시간 폴백)
+    camera: str = ""                # 카메라 제조사·모델 (메타 태그, 없으면 "")
     keyframes: list[str] = field(default_factory=list)  # jpg 경로들
     keyframe_times: list[float] = field(default_factory=list)
     focus_score: float = 0.0        # 0~100 (라플라시안 분산 정규화)
@@ -70,6 +71,39 @@ def _extract_recorded_date(video_path: str) -> str:
         return ""
 
 
+def _extract_camera(video_path: str) -> str:
+    """카메라 제조사·모델 추출. QuickTime/일반 메타 태그(make/model)를 우선 사용.
+    예: DJI 드론 → "DJI FC3582", iPhone → "Apple iPhone 15 Pro". 없으면 ''."""
+    try:
+        out = subprocess.check_output(
+            ["ffprobe", "-v", "error", "-show_entries", "format_tags:stream_tags",
+             "-of", "json", video_path]
+        )
+        data = json.loads(out)
+        tags: dict = {}
+        if "format" in data:
+            tags.update(data["format"].get("tags", {}) or {})
+        for s in data.get("streams", []):
+            tags.update(s.get("tags", {}) or {})
+
+        # 키를 소문자로 정규화해 ...make / ...model 로 끝나는 태그를 찾는다.
+        low = {k.lower(): v for k, v in tags.items() if isinstance(v, str) and v.strip()}
+
+        def find(suffix: str) -> str:
+            for k, v in low.items():
+                if k.endswith(suffix):
+                    return v.strip()
+            return ""
+
+        make, model = find("make"), find("model")
+        if make and model:
+            # 중복 표기 방지: model에 make가 이미 들어있으면 model만
+            return model if make.lower() in model.lower() else f"{make} {model}"
+        return model or make or ""
+    except Exception:
+        return ""
+
+
 def _has_audio_stream(video_path: str) -> bool:
     try:
         out = subprocess.check_output(
@@ -107,20 +141,75 @@ def _measure_rms_dbfs(wav_path: str) -> float:
     return -99.0
 
 
-def _sample_keyframes(video_path: str, duration: float, workdir: str
-                      ) -> tuple[list[str], list[float], float]:
-    """길이에 비례해 N장 균등 샘플링 + 라플라시안 초점 점수."""
+def _uniform_times(duration: float) -> list[float]:
+    """길이에 비례한 N장 균등 간격 시각(폴백)."""
     minutes = max(duration / 60.0, 0.01)
     n = int(min(settings.keyframe_max,
                 max(settings.keyframe_min, round(minutes * settings.keyframe_per_minute))))
+    return [duration * (i + 0.5) / n for i in range(n)]
+
+
+def _detect_scene_times(video_path: str, duration: float) -> list[float]:
+    """장면 전환을 검출해 각 장면의 대표 시각(중앙)을 반환.
+
+    저해상도 HSV 히스토그램의 Bhattacharyya 거리로 컷을 찾고, 장면 구간의
+    중앙 프레임을 대표로 삼는다. 장면 수가 너무 많으면(상한 초과) 균등 추려내고,
+    너무 적으면 균등 샘플링으로 폴백한다."""
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    step = max(1, int(round(fps / max(settings.scene_sample_fps, 0.1))))
+
+    boundaries = [0.0]          # 장면 시작 시각들
+    prev_hist = None
+    frame_idx = 0
+    while True:
+        if not cap.grab():
+            break
+        if frame_idx % step == 0:
+            ok, frame = cap.retrieve()
+            if ok and frame is not None:
+                small = cv2.resize(frame, (160, 90))
+                hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+                hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
+                cv2.normalize(hist, hist)
+                if prev_hist is not None:
+                    d = cv2.compareHist(prev_hist, hist, cv2.HISTCMP_BHATTACHARYYA)
+                    if d > settings.scene_threshold:
+                        boundaries.append(frame_idx / fps)
+                prev_hist = hist
+        frame_idx += 1
+    cap.release()
+
+    edges = boundaries + [duration]
+    scene_mids = [(edges[i] + edges[i + 1]) / 2 for i in range(len(edges) - 1)]
+    scene_mids = [t for t in scene_mids if 0 <= t <= duration]
+
+    if len(scene_mids) < settings.keyframe_min:
+        return _uniform_times(duration)           # 장면이 거의 없으면 균등 폴백
+    if len(scene_mids) > settings.keyframe_max:    # 너무 많으면 균등 추려내기
+        idxs = [round(i * (len(scene_mids) - 1) / (settings.keyframe_max - 1))
+                for i in range(settings.keyframe_max)]
+        scene_mids = [scene_mids[i] for i in sorted(set(idxs))]
+    return scene_mids
+
+
+def _sample_keyframes(video_path: str, duration: float, workdir: str
+                      ) -> tuple[list[str], list[float], float]:
+    """장면 전환 기반(기본) 또는 균등 간격으로 키프레임 추출 + 라플라시안 초점 점수."""
+    if getattr(settings, "scene_detect", True):
+        try:
+            times_sel = _detect_scene_times(video_path, duration)
+        except Exception:
+            times_sel = _uniform_times(duration)   # 검출 실패 시 균등 폴백
+    else:
+        times_sel = _uniform_times(duration)
 
     cap = cv2.VideoCapture(video_path)
     paths: list[str] = []
     times: list[float] = []
     focus_vals: list[float] = []
 
-    for i in range(n):
-        t = duration * (i + 0.5) / n  # 균등 간격 중앙
+    for i, t in enumerate(times_sel):
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
         ok, frame = cap.read()
         if not ok or frame is None:
@@ -147,6 +236,7 @@ def preprocess(video_path: str, workdir: str | None = None) -> Preprocessed:
     workdir = workdir or tempfile.mkdtemp(prefix="preview_")
     duration = _ffprobe_duration(video_path)
     recorded_date = _extract_recorded_date(video_path)
+    camera = _extract_camera(video_path)
 
     audio_path = None
     rms = -99.0
@@ -164,6 +254,7 @@ def preprocess(video_path: str, workdir: str | None = None) -> Preprocessed:
         has_speech=has_speech,
         audio_rms_dbfs=round(rms, 1),
         recorded_date=recorded_date,
+        camera=camera,
         keyframes=keyframes,
         keyframe_times=times,
         focus_score=focus,

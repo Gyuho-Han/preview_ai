@@ -106,7 +106,16 @@ th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--bor
 th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--panel-2); }
-.thumb { width: 64px; height: 36px; object-fit: cover; border-radius: 4px; background: var(--panel-2); }
+.thumb { width: 64px; height: 36px; object-fit: cover; border-radius: 4px; background: var(--panel-2); display: block; }
+
+/* 표 썸네일 호버 스크럽(B) */
+.thumb-scrub { position: relative; width: 64px; cursor: ew-resize; }
+.thumb-scrub .scrub-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: rgba(255,255,255,.25); border-radius: 0 0 4px 4px; overflow: hidden; }
+.thumb-scrub .scrub-bar > div { height: 100%; background: var(--accent); }
+.thumb-scrub .scrub-time { position: absolute; top: 1px; right: 2px; font-size: 9px;
+  padding: 0 3px; border-radius: 3px; background: rgba(0,0,0,.6); color: #fff;
+  font-variant-numeric: tabular-nums; }
 
 .score { display: flex; align-items: center; gap: 8px; min-width: 120px; }
 .score-bar { flex: 1; height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
@@ -129,7 +138,11 @@ tbody tr:hover { background: var(--panel-2); }
 .meta-row { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; }
 .scene-list { list-style: none; padding: 0; margin: 0; }
 .scene-list li { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.scene-list li.scene-clickable { cursor: pointer; }
+.scene-list li.scene-clickable:hover { background: var(--panel-2); }
 .scene-time { color: var(--accent); font-variant-numeric: tabular-nums; min-width: 50px; }
+
+.clip-video { width: 100%; max-height: 420px; border-radius: 8px; background: #000; display: block; }
 .big-score { font-size: 44px; font-weight: 800; line-height: 1; }
 
 .empty { text-align: center; color: var(--muted); padding: 60px 0; }

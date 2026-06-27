@@ -118,6 +118,11 @@ class AnalyzeRequest(BaseModel):
     video_paths: list[str]
 
 
+class FolderRequest(BaseModel):
+    folder: str
+    recursive: bool = True
+
+
 # ---- 헬스/설정 -------------------------------------------------------------
 @app.get("/health")
 def health() -> dict:
@@ -197,7 +202,9 @@ def get_project(pid: str) -> dict:
 
 
 def _remove_clip_files(clip: dict) -> None:
-    """클립의 썸네일·업로드 원본 파일을 디스크에서 정리(베스트 에포트)."""
+    """클립의 썸네일·업로드 원본·키프레임·미리보기 파일을 디스크에서 정리(베스트 에포트)."""
+    import shutil as _sh
+
     for key in ("thumbnail", "filepath"):
         path = clip.get(key)
         # 업로드 모드로 복사된 파일만 삭제(앱 데이터 디렉토리 내부). Tauri 로컬
@@ -207,6 +214,14 @@ def _remove_clip_files(clip: dict) -> None:
                 os.remove(path)
             except OSError:
                 pass
+    # 키프레임 디렉토리(frames/<cid>) + 미리보기(previews/<cid>.mp4) 정리
+    cid = clip.get("id")
+    if cid:
+        _sh.rmtree(os.path.join(DATA_DIR, "frames", cid), ignore_errors=True)
+        try:
+            os.remove(os.path.join(DATA_DIR, "previews", f"{cid}.mp4"))
+        except OSError:
+            pass
 
 
 @app.delete("/clips/{cid}")
@@ -301,7 +316,7 @@ def _run_analysis(clip_id: str, project_id: str, video_path: str) -> None:
     try:
         result = analyzer.analyze_video(
             video_path, plan_emb, plan_kw, progress=_progress,
-            thumb_dir=os.path.join(DATA_DIR, "thumbs"),
+            frames_dir=os.path.join(DATA_DIR, "frames", clip_id),
         )
         with _lock:
             _clips[clip_id].update(result)
@@ -338,6 +353,52 @@ def analyze(req: AnalyzeRequest) -> dict:
         _executor.submit(_run_analysis, cid, req.project_id, path)
         clip_ids.append(cid)
     return {"clip_ids": clip_ids}
+
+
+VIDEO_EXTS = {".mp4", ".mov", ".mxf", ".m4v", ".avi", ".mts", ".m2ts", ".mkv"}
+
+
+@app.post("/projects/{pid}/analyze_folder")
+def analyze_folder(pid: str, req: FolderRequest) -> dict:
+    """폴더 경로를 받아 그 안의 영상들을 '복사 없이' 경로 그대로 분석 큐에 투입.
+    이미 같은 경로로 분석된 파일은 건너뛴다(중복 방지)."""
+    with _lock:
+        if pid not in _projects:
+            raise HTTPException(404, "project not found")
+    folder = os.path.expanduser(req.folder.strip())
+    if not folder or not os.path.isdir(folder):
+        raise HTTPException(400, f"폴더를 찾을 수 없습니다: {req.folder}")
+
+    # 영상 파일 수집(재귀 옵션), 정렬
+    found: list[str] = []
+    if req.recursive:
+        for root, _dirs, files in os.walk(folder):
+            for f in files:
+                if not f.startswith(".") and os.path.splitext(f)[1].lower() in VIDEO_EXTS:
+                    found.append(os.path.join(root, f))
+    else:
+        for f in os.listdir(folder):
+            p = os.path.join(folder, f)
+            if os.path.isfile(p) and not f.startswith(".") and os.path.splitext(f)[1].lower() in VIDEO_EXTS:
+                found.append(p)
+    found.sort()
+
+    with _lock:
+        existing = {c.get("filepath") for c in _clips.values() if c.get("project_id") == pid}
+    clip_ids = []
+    for path in found:
+        if path in existing:
+            continue  # 이미 분석한 파일은 건너뜀
+        cid = str(uuid.uuid4())
+        with _lock:
+            _clips[cid] = {
+                "id": cid, "project_id": pid,
+                "filename": os.path.basename(path), "filepath": path,
+                "status": "queued", "stage": "대기 중", "progress": 0,
+            }
+        _executor.submit(_run_analysis, cid, pid, path)
+        clip_ids.append(cid)
+    return {"clip_ids": clip_ids, "found": len(found), "queued": len(clip_ids)}
 
 
 @app.post("/projects/{pid}/analyze_upload")
@@ -426,6 +487,138 @@ def thumb(cid: str):
     if not c or not c.get("thumbnail") or not os.path.exists(c["thumbnail"]):
         raise HTTPException(404, "no thumbnail")
     return FileResponse(c["thumbnail"])
+
+
+@app.get("/clips/{cid}/frame/{idx}")
+def clip_frame(cid: str, idx: int):
+    """표 호버 스크럽용: cid 클립의 idx번째 키프레임 jpg 반환."""
+    from fastapi.responses import FileResponse
+
+    with _lock:
+        c = _clips.get(cid)
+    frames = (c or {}).get("frames") or []
+    if not frames:
+        if c and c.get("thumbnail") and os.path.exists(c["thumbnail"]):
+            return FileResponse(c["thumbnail"])
+        raise HTTPException(404, "no frames")
+    i = max(0, min(idx, len(frames) - 1))
+    if not os.path.exists(frames[i]):
+        raise HTTPException(404, "frame missing")
+    return FileResponse(frames[i])
+
+
+# ---- 웹 미리보기(H.264+AAC) 온디맨드 변환 + 스트리밍 -----------------------
+_preview_executor = ThreadPoolExecutor(max_workers=2)
+_preview_state: dict[str, dict] = {}   # cid -> {generating, ready, error}
+
+
+def _preview_path(cid: str) -> str:
+    return os.path.join(DATA_DIR, "previews", f"{cid}.mp4")
+
+
+def _generate_preview(cid: str) -> None:
+    import subprocess
+
+    path = _preview_path(cid)
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        with _lock:
+            _preview_state[cid] = {"generating": False, "ready": True, "error": None}
+        return
+    with _lock:
+        src = (_clips.get(cid) or {}).get("filepath")
+    if not src or not os.path.isfile(src):
+        with _lock:
+            _preview_state[cid] = {"generating": False, "ready": False,
+                                   "error": "원본 파일을 찾을 수 없습니다."}
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp.mp4"
+    # 어떤 코덱(ProRes/MXF 등)이든 웹 재생용 H.264 영상 + AAC 오디오로 변환.
+    # 540p·faststart로 가볍게(시크 가능). 오디오 없으면 ffmpeg가 알아서 영상만 출력.
+    cmd = [
+        "ffmpeg", "-y", "-i", src,
+        "-vf", "scale=-2:540",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart", tmp,
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        os.replace(tmp, path)
+        with _lock:
+            _preview_state[cid] = {"generating": False, "ready": True, "error": None}
+    except subprocess.CalledProcessError as e:
+        msg = (e.stderr.decode("utf-8", "ignore")[-400:] if e.stderr else str(e))
+        with _lock:
+            _preview_state[cid] = {"generating": False, "ready": False, "error": msg}
+    except Exception as e:  # noqa: BLE001
+        with _lock:
+            _preview_state[cid] = {"generating": False, "ready": False, "error": str(e)}
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+
+@app.get("/clips/{cid}/preview")
+def preview_status(cid: str) -> dict:
+    """미리보기 상태 조회. 없으면 백그라운드 변환을 시작한다."""
+    path = _preview_path(cid)
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        return {"ready": True, "generating": False, "error": None}
+    with _lock:
+        st = _preview_state.get(cid)
+        if st and (st["generating"] or st.get("error")):
+            return st
+        _preview_state[cid] = {"generating": True, "ready": False, "error": None}
+    _preview_executor.submit(_generate_preview, cid)
+    return {"ready": False, "generating": True, "error": None}
+
+
+@app.get("/video/{cid}")
+def video(cid: str, request: Request):
+    """변환된 미리보기를 HTTP Range로 스트리밍(시크 지원)."""
+    from fastapi.responses import FileResponse, StreamingResponse
+
+    path = _preview_path(cid)
+    if not (os.path.exists(path) and os.path.getsize(path) > 0):
+        raise HTTPException(404, "preview not ready")
+    size = os.path.getsize(path)
+    rng = request.headers.get("range")
+    if not rng:
+        return FileResponse(path, media_type="video/mp4",
+                            headers={"Accept-Ranges": "bytes"})
+    try:
+        rng = rng.split("=", 1)[1]
+        s_str, _, e_str = rng.partition("-")
+        start = int(s_str) if s_str else 0
+        end = int(e_str) if e_str else size - 1
+    except (IndexError, ValueError):
+        start, end = 0, size - 1
+    end = min(end, size - 1)
+    start = max(0, min(start, end))
+    length = end - start + 1
+
+    def _iter():
+        with open(path, "rb") as f:
+            f.seek(start)
+            remaining = length
+            while remaining > 0:
+                chunk = f.read(min(131072, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                yield chunk
+
+    headers = {
+        "Content-Range": f"bytes {start}-{end}/{size}",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(length),
+        "Content-Type": "video/mp4",
+    }
+    return StreamingResponse(_iter(), status_code=206, headers=headers)
 
 
 if __name__ == "__main__":

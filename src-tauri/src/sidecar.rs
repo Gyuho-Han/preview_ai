@@ -82,19 +82,50 @@ pub fn ensure_ollama() {
     }
 }
 
-/// Python 사이드카 실행. 8765가 이미 떠 있으면 재사용.
+/// 우리가 띄운 사이드카 PID 기록 파일(orphan 정리용).
+fn sidecar_pidfile() -> std::path::PathBuf {
+    std::env::temp_dir().join("preview-ai-sidecar.pid")
+}
+
+#[cfg(dev)]
+fn read_pidfile() -> Option<u32> {
+    std::fs::read_to_string(sidecar_pidfile()).ok()?.trim().parse().ok()
+}
+
+#[cfg(dev)]
+fn write_pidfile(pid: u32) {
+    let _ = std::fs::write(sidecar_pidfile(), pid.to_string());
+}
+
+#[cfg(dev)]
+fn kill_pid(pid: u32) {
+    let _ = StdCommand::new("kill").args(["-9", &pid.to_string()]).status();
+}
+
+/// Python 사이드카 실행.
 pub fn spawn_sidecar() {
-    if port_in_use(8765) {
-        println!("[sidecar] 8765 이미 사용 중 — 기존 사이드카 재사용");
-        return;
-    }
     spawn_sidecar_impl();
 }
 
 /// dev: conda(preview)/시스템 python 으로 server.py 직접 실행.
+/// 이전 dev 세션이 남긴 orphan 사이드카(8765 점유)를 먼저 정리한 뒤 새로 띄운다.
 #[cfg(dev)]
 fn spawn_sidecar_impl() {
-    let manifest = env!("CARGO_MANIFEST_DIR"); // .../preview-ai/src-tauri
+    // 포트가 잡혀 있고, 우리가 기록해 둔 PID가 있으면 그 orphan을 정리
+    if port_in_use(8765) {
+        if let Some(pid) = read_pidfile() {
+            println!("[sidecar] 이전 사이드카(pid {pid}) 정리 후 재시작");
+            kill_pid(pid);
+            std::thread::sleep(std::time::Duration::from_millis(900));
+        }
+    }
+    // 정리 후에도 8765가 외부 프로세스(수동 uvicorn 등)로 점유돼 있으면 그대로 재사용
+    if port_in_use(8765) {
+        println!("[sidecar] 8765 외부 프로세스 사용 중 — 재사용");
+        return;
+    }
+
+    let manifest = env!("CARGO_MANIFEST_DIR"); // .../preview_ai/src-tauri
     let dir = match std::path::Path::new(manifest).parent() {
         Some(p) => p.join("python-sidecar"),
         None => {
@@ -127,6 +158,7 @@ fn spawn_sidecar_impl() {
             .spawn()
         {
             Ok(child) => {
+                write_pidfile(child.id());   // orphan 정리용 PID 기록
                 *SIDECAR_DEV_CHILD.lock().unwrap() = Some(child);
                 println!("[sidecar] dev 사이드카 시작: {py}");
                 return;
@@ -144,6 +176,10 @@ fn spawn_sidecar_impl() {
 /// 배포: PyInstaller 번들 바이너리(externalBin) 실행.
 #[cfg(not(dev))]
 fn spawn_sidecar_impl() {
+    if port_in_use(8765) {
+        println!("[sidecar] 8765 이미 사용 중 — 기존 사이드카 재사용");
+        return;
+    }
     let cmd = match Command::new_sidecar("preview-sidecar") {
         Ok(c) => c,
         Err(e) => {
@@ -172,6 +208,7 @@ pub fn kill_all() {
     }
     if let Some(mut child) = SIDECAR_DEV_CHILD.lock().unwrap().take() {
         let _ = child.kill();
+        let _ = std::fs::remove_file(sidecar_pidfile());
     }
     if let Some(mut child) = OLLAMA_CHILD.lock().unwrap().take() {
         let _ = child.kill();

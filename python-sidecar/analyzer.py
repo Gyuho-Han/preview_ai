@@ -24,6 +24,24 @@ import vlm
 ProgressCb = Callable[[str, int], None]
 
 
+def _fmt_ts(sec: float) -> str:
+    """초 → mm:ss (1시간 이상이면 h:mm:ss)."""
+    sec = int(round(sec))
+    h, rem = divmod(sec, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+
+
+def _build_scenes(keyframe_times: list[float], scene_descs: list[str]) -> list[dict]:
+    """타임스탬프별 장면 목록을 '실제' 키프레임 시각으로 구성.
+    (LLM이 시각을 지어내지 않도록, 장면 검출로 얻은 진짜 시각을 쓴다.)"""
+    return [
+        {"time": _fmt_ts(t), "desc": (d or "").strip()}
+        for t, d in zip(keyframe_times, scene_descs)
+        if (d or "").strip()
+    ]
+
+
 def analyze_plan_document(path: str) -> dict:
     """P2 — 기획안 분석 + 키워드 임베딩 저장(추천도 기준점)."""
     from pdf_parse import extract_text
@@ -43,10 +61,11 @@ def analyze_video(video_path: str,
                   plan_embedding: list[float] | None = None,
                   plan_keywords: list[str] | None = None,
                   progress: ProgressCb | None = None,
-                  thumb_dir: str | None = None) -> dict:
+                  frames_dir: str | None = None) -> dict:
     """단일 영상 → 표 1행에 들어갈 분석 결과 dict.
 
-    thumb_dir: 썸네일을 영구 보관할 디렉토리(없으면 임시 → 정리됨)."""
+    frames_dir: 키프레임(썸네일+호버 스크럽용)을 영구 보관할 클립별 디렉토리.
+                없으면 임시(workdir) 경로를 그대로 반환 → 곧 정리됨."""
     plan_keywords = plan_keywords or []
     workdir = tempfile.mkdtemp(prefix="preview_")
 
@@ -94,30 +113,35 @@ def analyze_video(video_path: str,
         _p("완료", 100)
 
         # 표 1행 (P4 9개 컬럼 + 상세 P5 데이터)
-        # 썸네일은 workdir 정리 전에 영구 디렉토리로 복사
+        # 키프레임 전체를 workdir 정리 전에 영구 디렉토리로 복사
+        #   → 첫 장면=썸네일, 전체=표 호버 스크럽(B)용 필름스트립
         thumb = None
+        frames: list[str] = []
         if pre.keyframes:
-            if thumb_dir:
-                os.makedirs(thumb_dir, exist_ok=True)
-                thumb = os.path.join(
-                    thumb_dir,
-                    f"{os.path.splitext(os.path.basename(video_path))[0]}_thumb.jpg",
-                )
-                shutil.copyfile(pre.keyframes[0], thumb)
+            if frames_dir:
+                os.makedirs(frames_dir, exist_ok=True)
+                for i, kf in enumerate(pre.keyframes):
+                    dest = os.path.join(frames_dir, f"{i:03d}.jpg")
+                    shutil.copyfile(kf, dest)
+                    frames.append(dest)
             else:
-                thumb = pre.keyframes[0]
+                frames = list(pre.keyframes)
+            thumb = frames[0] if frames else None
         return {
             "filename": os.path.basename(video_path),
             "filepath": video_path,
             "thumbnail": thumb,
+            "frames": frames,                       # 호버 스크럽용 키프레임 경로들
+            "frame_times": pre.keyframe_times,       # 각 프레임의 실제 시각(초)
             "duration_sec": pre.duration_sec,
             "date": pre.recorded_date,
             "place": content.get("place", ""),
-            "camera": "",  # 메타데이터에서 추후 추출
+            "camera": pre.camera,  # 영상 메타데이터에서 추출한 카메라 제조사·모델
             "people": content.get("people", []),
             "one_line": content.get("one_line", ""),
             "summary": content.get("summary", ""),
-            "scenes": content.get("scenes", []),
+            # 타임스탬프별 장면: 실제 키프레임 시각 + VLM 설명 (LLM 추측 아님)
+            "scenes": _build_scenes(pre.keyframe_times, scene_descs),
             "keywords": content.get("keywords", []),
             "ai_comment": content.get("ai_comment", ""),
             "has_speech": pre.has_speech,

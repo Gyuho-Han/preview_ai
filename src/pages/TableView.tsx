@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import type { Clip } from "../types";
 import { fmtDuration, colorClass } from "../util";
+import ThumbScrub from "../components/ThumbScrub";
 
 const PAGE_SIZE = 50;
 
@@ -93,10 +94,8 @@ export default function TableView() {
           <tbody>
             {pageItems.map((c) => (
               <tr key={c.id} onClick={() => nav(`/project/${pid}/clip/${c.id}`)}>
-                <td>
-                  {c.thumbnail ? (
-                    <img className="thumb" src={api.thumbUrl(c.id)} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")} />
-                  ) : <div className="thumb" />}
+                <td onClick={(e) => e.stopPropagation()}>
+                  <ThumbScrub clip={c} />
                 </td>
                 <td>{c.filename}</td>
                 <td>{fmtDuration(c.duration_sec)}</td>

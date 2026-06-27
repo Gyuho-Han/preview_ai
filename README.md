@@ -1,7 +1,7 @@
 # Preview AI
 
 다큐팀용 **로컬** 영상 분석·프리뷰 노트 자동화 데스크탑 앱.
-영상을 업로드하면 자동으로 자막·장면 설명·키워드·추천도를 뽑아 스프레드시트로 정리합니다.
+영상 폴더를 지정하면 그 안의 영상을 **복사 없이 경로로** 읽어 자막·장면 설명·키워드·추천도를 뽑아 스프레드시트로 정리합니다.
 영상은 외부로 전송되지 않습니다 (모델 전부 로컬 실행).
 
 > 환경: macOS (Apple Silicon) · Tauri · 로컬 모델만(Ollama / MLX)
@@ -28,15 +28,43 @@ Rust 코어(`src-tauri/src/sidecar.rs`)가 앱 시작 시 Ollama 서버와 Pytho
 
 ## 분석 파이프라인 (`python-sidecar/analyzer.py`)
 
-1. **전처리** `preprocess.py` — ffmpeg로 16kHz wav 추출 + 음성 유무 감지, OpenCV로 키프레임 N장 + 초점(라플라시안) 측정
-2. **STT** `stt.py` — 음성이 있을 때만 Qwen3-ASR(MLX, `Qwen3-ASR-1.7B-8bit`)로 자막 생성
-3. **VLM** `vlm.py` — 모든 영상에 Qwen2.5-VL로 키프레임 장면 설명 (음성 없는 B롤도 분석)
-4. **융합** `llm.py` — Qwen3로 자막+시각설명 → 한줄요약·장면목록·키워드·인물 (JSON)
+1. **전처리** `preprocess.py` — ffmpeg로 16kHz wav 추출 + 음성 유무 감지, 메타데이터에서 촬영 날짜·**카메라(제조사·모델)** 추출, OpenCV로 **장면 전환 검출 기반** 키프레임 추출 + 초점(라플라시안) 측정
+2. **STT** `stt.py` — 음성이 있을 때만 Qwen3-ASR(MLX, `Qwen3-ASR-1.7B-4bit`)로 자막 생성
+3. **VLM** `vlm.py` — 키프레임마다 Qwen2.5-VL로 장면 설명 (음성 없는 B롤도 분석). 호출은 키프레임 수(1~8회)만큼만
+4. **융합** `llm.py` — Qwen3로 자막+시각설명 → 한줄요약·키워드·인물·장소·코멘트 (JSON). 타임스탬프별 장면 목록은 LLM이 아니라 **실제 키프레임 시각**(장면 검출 결과)으로 `analyzer.py`에서 구성 — 상세페이지 타임스탬프가 영상 전체에 걸쳐 정확
 5. **추천도** `embed.py` + `scoring.py` — `0.7×연관성(bge-m3 코사인) + 0.3×기술품질(초점+오디오)`
    - 색상: 80%↑ 초록 / 50~79% 노랑 / 49%↓ 빨강
    - 가중치·임계값은 `config.py`에서 조정
 
 RAM을 감지해 모델 티어를 자동 선택합니다(16GB→8b/3b, 24~32GB→14b/7b, 48GB+→30b/7b).
+
+**키프레임 선택(장면 전환 검출)** — VLM은 매 초가 아니라 **장면이 바뀌는 지점**에서만 키프레임을 뽑아
+호출합니다. 저해상도 HSV 히스토그램의 Bhattacharyya 거리로 컷을 찾아 각 장면의 중앙 프레임을 대표로
+쓰고, 장면 수는 `keyframe_min`~`keyframe_max`(기본 1~8)로 제한합니다. 장면이 거의 없으면 균등 간격으로
+폴백합니다. 따라서 한 영상당 VLM 호출은 1~8회로, 길이와 무관하게 비용이 통제됩니다.
+
+## 영상 입력 (폴더 경로 방식)
+
+P3에서 **영상 폴더를 지정**하면 사이드카가 그 폴더(하위 폴더 포함)의 영상을 스캔해 **원본을 복사하지 않고
+경로 그대로** 분석합니다(대용량 ProRes·MXF에 유리). 이미 분석한 파일은 자동으로 건너뜁니다.
+
+- 앱 모드: "영상 폴더 선택" → 네이티브 폴더 다이얼로그.
+- 브라우저 모드: 폴더 경로를 직접 입력(사이드카가 같은 PC에서 읽음).
+- 서버: `POST /projects/{pid}/analyze_folder` (`{folder, recursive}`), 대상 확장자 mp4·mov·mxf·m4v·avi·mts·m2ts·mkv.
+
+## 영상 미리보기 · 재생
+
+- **표(P4) 호버 스크럽** — 썸네일 칸에 마우스를 올리고 좌우로 움직이면 키프레임이 넘어가며
+  미리보기됩니다(칸 아래 진행 바 + 현재 시각 표시). 분석 때 보관한 키프레임 이미지만 쓰므로
+  **영상 복사·재생 없이, 모든 코덱(ProRes 포함)** 에서 즉시 동작합니다. 코드: `src/components/ThumbScrub.tsx`,
+  서버 `GET /clips/{cid}/frame/{idx}`.
+- **상세(P5) 실제 재생 + 오디오** — 어떤 코덱이든 웹 재생용 H.264+AAC로 **온디맨드 변환**(처음 열 때 1회,
+  이후 캐시)해 재생합니다. 시크바로 앞뒤 이동, **타임스탬프 클릭 시 그 지점부터 재생**.
+  코드: 서버 `GET /clips/{cid}/preview`(변환 상태)·`GET /video/{cid}`(Range 스트리밍), `src/pages/ClipDetail.tsx`.
+  변환본은 `~/Library/Application Support/preview-ai/previews/`에 캐시되며, 원본은 건드리지 않습니다.
+
+> 호버 스크럽은 분석 시 보관한 키프레임이 필요하므로, 이 기능 추가 전에 분석된 옛 클립은 **재분석**해야
+> 프레임이 채워집니다(상세 재생은 원본 경로만 있으면 옛 클립도 동작).
 
 ## 모델 설정 (`models.config`)
 
@@ -48,13 +76,20 @@ RAM을 감지해 모델 티어를 자동 선택합니다(16GB→8b/3b, 24~32GB�
 llm   = "qwen3:8b"        # ""로 비우면 RAM 용량에 맞춰 자동 선택
 vlm   = "qwen2.5vl:3b"
 embed = "bge-m3"
-asr   = "mlx-community/Qwen3-ASR-1.7B-8bit"
+asr   = "mlx-community/Qwen3-ASR-1.7B-4bit"   # 8bit(2.4GB)·0.6B-4bit(0.5GB)로 교체 가능
 
 [scoring]
 weight_relevance = 0.7
 weight_quality   = 0.3
 threshold_green  = 80
 threshold_yellow = 50
+
+[preprocess]
+scene_detect     = true   # false면 균등 간격 샘플링
+scene_threshold  = 0.5    # 낮을수록 컷을 더 민감하게 잡음
+scene_sample_fps = 2.0    # 장면 스캔 시 초당 검사 프레임 수
+keyframe_min     = 1
+keyframe_max     = 8
 ```
 
 우선순위는 **환경변수 > `models.config` > RAM 자동 선택**. 일회성으로 바꿀 땐 환경변수가 편합니다:
@@ -93,8 +128,12 @@ npm run tauri:dev
 `npm run tauri:dev` 는 dev 모드에서 다음을 자동으로 처리한다:
 
 - **Ollama**: 11434에 이미 떠 있으면 재사용, 없으면 시스템 `ollama serve` 자동 실행
-- **Python 사이드카**: conda `preview` 환경의 python으로 `server.py`를 자동 실행
-  (8765가 이미 떠 있으면 재사용 — uvicorn을 따로 띄울 필요 없음)
+- **Python 사이드카**: conda `preview` 환경의 python으로 `server.py`를 자동 실행.
+  이전 dev 세션이 남긴 사이드카(8765 점유 orphan)는 PID 기록으로 **자동 정리 후 새로 실행**한다.
+  외부에서 수동으로 띄운 사이드카(8765)가 있으면 그건 그대로 재사용한다.
+
+> dev를 터미널에서 `Ctrl+C`로 끄면 Rust 부모만 종료되고 사이드카가 잠깐 남을 수 있는데, 다음
+> `npm run tauri:dev` 때 자동으로 정리된다. 수동 즉시 정리: `lsof -ti:8765 | xargs kill -9`
 
 > conda 환경이 표준 위치(`~/miniconda3` `~/anaconda3` `~/miniforge3` 등)의 `preview`가 아니면,
 > 사이드카가 쓸 python 경로를 환경변수로 지정한다:
@@ -122,6 +161,29 @@ npm run dev                 # http://localhost:1420  → 우상단 "데모 모�
 `src-tauri/src/sidecar.rs`(Ollama 자동 실행). 모델 가중치는 앱에 내장하지 않으므로
 설치 파일이 가볍고 공증이 빠릅니다(첫 실행 시 1회 인터넷 필요).
 
+### 모델 다운로드가 느릴 때
+
+기본 ASR은 `Qwen3-ASR-1.7B-4bit`(약 1.2GB)입니다. 최초 1회만 받으면 캐시되어 이후엔 즉시 로드됩니다.
+
+- **모델 교체**: `models.config`의 `[models] asr` 값을 바꾸면 됩니다.
+  - `mlx-community/Qwen3-ASR-1.7B-4bit` (기본, 약 1.2GB, 정확도≈8bit)
+  - `mlx-community/Qwen3-ASR-1.7B-8bit` (약 2.4GB, 최고 정확도)
+  - `mlx-community/Qwen3-ASR-0.6B-4bit` (약 0.5GB, 가장 빠름·가벼움)
+  바꾼 뒤 사이드카(앱)를 재시작하면 새 모델만 받습니다.
+- **다운로더**: 기본은 안정적인 표준 다운로더(진행률이 꾸준히 갱신)를 씁니다. `hf_transfer`(병렬·러스트
+  기반)는 더 빠를 수 있으나 일부 네트워크에서 **0%에 멈추는 문제**가 있어 기본은 꺼져 있습니다.
+  안정적인 회선에서 쓰려면 `PREVIEW_FAST_DOWNLOAD=1 npm run tauri:dev`로 명시적으로 켜세요.
+
+### 분석(음성 인식)이 느릴 때
+
+음성 인식(Qwen3-ASR, MLX)이 보통 가장 무거운 단계입니다.
+
+- **MLX는 GPU 1개를 쓰므로 STT 추론은 직렬화**됩니다(`stt.py`의 `_infer_lock`). 여러 클립이 동시에
+  STT를 호출해 경합하는 걸 막아 전체 처리량이 오히려 올라갑니다(VLM 등 다른 단계는 계속 병렬).
+- **더 작은 ASR 모델**로 바꾸면 클립당 속도가 크게 빨라집니다(위 모델 교체 참고. `0.6B-4bit` 권장).
+- 드론 B롤처럼 대사가 없는데 바람·모터 소음이 큰 클립은 음성으로 오인돼 STT가 돌 수 있습니다. 반복
+  환각은 자동 폐기(`_is_degenerate`)하지만, 더 정확한 건너뛰기는 추후 VAD(음성 구간 검출) 도입 예정입니다.
+
 ## 배포 빌드
 
 ```bash
@@ -140,7 +202,32 @@ npm run tauri:build
 
 > 아이콘은 플레이스홀더가 `src-tauri/icons/`에 포함돼 있습니다(네이비 배경 ▶). 실제 로고로
 > 교체하려면 `npm run tauri icon path/to/logo.png` 한 번이면 전체 세트가 생성됩니다.
-> MLX는 Apple Silicon 전용이며, 배포하려면 Apple 코드 서명·공증이 필요합니다.
+> MLX는 Apple Silicon 전용입니다.
+
+### 설치 시 "손상되었기 때문에 열 수 없습니다" 해결
+
+Apple Silicon은 서명·공증이 없는 앱을 다운로드해 실행하면 "손상되었기 때문에 열 수 없습니다"로
+차단합니다(파일이 깨진 게 아니라 Gatekeeper의 격리 차단). 두 경로가 있습니다.
+
+**(A) 무료 — 팀 내부 테스트 배포**
+받는 사람이 설치 후 한 번만 격리 속성을 제거하면 바로 실행됩니다:
+
+```bash
+xattr -cr "/Applications/Preview AI.app"
+```
+
+(선택) 우클릭→"열기"가 되게 하려면 빌드한 쪽에서 ad-hoc 서명을 직접 적용할 수도 있습니다.
+단, Tauri 내장 자동 ad-hoc 서명(`signingIdentity = "-"`)은 외곽 `.app` 서명에서 실패할 수 있어
+빌드가 막히므로, 필요 시 빌드 후 수동 적용을 권장합니다:
+
+```bash
+codesign --force --deep -s - "src-tauri/target/release/bundle/macos/Preview AI.app"
+```
+
+**(B) 정식 — 외부 배포**
+Apple Developer 계정(연 $99)으로 Developer ID 서명 + 공증(notarization)을 적용하면 위 과정 없이
+바로 실행됩니다. `tauri.conf.json`의 `bundle.macOS.signingIdentity`를 "Developer ID Application: …"으로
+설정하고, 빌드 시 `APPLE_ID`·`APPLE_PASSWORD`(앱 암호)·`APPLE_TEAM_ID` 환경변수로 공증을 켭니다.
 
 ## 개발 우선순위 (MVP)
 
