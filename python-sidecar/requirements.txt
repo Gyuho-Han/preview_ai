@@ -31,5 +31,7 @@ httpx>=0.27.0
 
 # 첫 실행 셋업: ASR 모델 다운로드 (HuggingFace Hub)
 huggingface_hub>=0.23.0
+hf_transfer>=0.1.6       # (선택) 고속 병렬 다운로더. 일부 네트워크서 멈춰서 기본 OFF,
+                        #        PREVIEW_FAST_DOWNLOAD=1 일 때만 사용
 
 # ffmpeg 바이너리는 시스템 설치 필요: `brew install ffmpeg`

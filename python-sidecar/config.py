@@ -92,6 +92,11 @@ class Settings:
     keyframe_per_minute: float = 1.0
     silence_dbfs: float = -45.0
 
+    # 장면 전환 검출 (키프레임을 균등 간격 대신 장면 경계에서 선택)
+    scene_detect: bool = True
+    scene_threshold: float = 0.5      # 히스토그램 Bhattacharyya 거리 컷 임계값(0~1)
+    scene_sample_fps: float = 2.0     # 장면 스캔 시 초당 검사 프레임 수
+
     ram_gb: int = dataclasses.field(default_factory=_total_ram_gb)
 
     def __post_init__(self) -> None:
@@ -113,6 +118,9 @@ class Settings:
         self.keyframe_min = int(_pick("KEYFRAME_MIN", "preprocess", "keyframe_min", default=1))
         self.keyframe_max = int(_pick("KEYFRAME_MAX", "preprocess", "keyframe_max", default=8))
         self.keyframe_per_minute = float(_pick("KEYFRAME_PER_MINUTE", "preprocess", "keyframe_per_minute", default=1.0))
+        self.scene_detect = bool(_pick("SCENE_DETECT", "preprocess", "scene_detect", default=True))
+        self.scene_threshold = float(_pick("SCENE_THRESHOLD", "preprocess", "scene_threshold", default=0.5))
+        self.scene_sample_fps = float(_pick("SCENE_SAMPLE_FPS", "preprocess", "scene_sample_fps", default=2.0))
 
         # --- LLM/VLM: 지정 없으면 RAM 티어로 자동 선택 ---
         llm = _pick("LLM_MODEL", "models", "llm", default=None)

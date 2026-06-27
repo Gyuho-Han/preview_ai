@@ -56,6 +56,17 @@ export const api = {
   thumbUrl(cid: string): string {
     return `${SIDECAR}/thumb/${cid}`;
   },
+  frameUrl(cid: string, idx: number): string {
+    return `${SIDECAR}/clips/${cid}/frame/${idx}`;
+  },
+  videoUrl(cid: string): string {
+    return `${SIDECAR}/video/${cid}`;
+  },
+  // 상세페이지 재생용: 미리보기(H.264) 변환 상태 조회(없으면 변환 시작)
+  async previewStatus(cid: string): Promise<{ ready: boolean; generating: boolean; error: string | null }> {
+    if (useMock) return { ready: false, generating: false, error: null };
+    return http(`/clips/${cid}/preview`);
+  },
 
   // ---- 첫 실행 셋업 (브라우저/Tauri 모두 사이드카 HTTP 직접 사용) ----
   async setupStatus(): Promise<SetupSnapshot> {
@@ -128,6 +139,19 @@ export const api = {
     return http(`/projects/${projectId}/analyze_upload`, { method: "POST", body: form });
   },
 
+  // 폴더 경로 방식: 사이드카가 폴더 내 영상을 복사 없이 경로로 분석
+  async analyzeFolder(projectId: string, folder: string): Promise<{ clip_ids: string[]; found: number; queued: number }> {
+    if (useMock) {
+      const r = await mockApi.analyzeVideos(projectId, ["/demo/A.mov", "/demo/B.mov"]);
+      return { ...r, found: 2, queued: 2 };
+    }
+    return http(`/projects/${projectId}/analyze_folder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder, recursive: true }),
+    });
+  },
+
   async analyzeVideos(projectId: string, videoPaths: string[]): Promise<{ clip_ids: string[] }> {
     if (useMock) return mockApi.analyzeVideos(projectId, videoPaths);
     return isTauri
@@ -164,6 +188,17 @@ export const api = {
     return isTauri ? invoke("delete_clip", { cid }) : http(`/clips/${cid}`, { method: "DELETE" });
   },
 };
+
+// 로컬 폴더 선택 (Tauri dialog). 브라우저에선 미지원(경로 직접 입력 사용).
+export async function pickFolder(): Promise<string | null> {
+  if (!isTauri) {
+    if (useMock) return "/demo/footage";
+    return null;
+  }
+  const { open } = await import("@tauri-apps/api/dialog");
+  const sel = await open({ directory: true, multiple: false });
+  return (sel as string) || null;
+}
 
 // 로컬 영상/문서 파일 선택 (Tauri dialog). 브라우저에선 미지원.
 export async function pickVideos(): Promise<string[]> {

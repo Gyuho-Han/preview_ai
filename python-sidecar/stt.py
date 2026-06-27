@@ -38,6 +38,9 @@ def _is_degenerate(text: str) -> bool:
 # ---- 모델 싱글톤 (최초 1회 로드 후 재사용) ---------------------------------
 _model = None
 _model_lock = threading.Lock()
+# MLX는 GPU 하나를 쓰므로 여러 클립이 동시에 generate를 호출하면 경합으로 더 느려진다.
+# 추론을 직렬화해 클립을 한 번에 하나씩 처리(전체 처리량이 오히려 향상).
+_infer_lock = threading.Lock()
 
 
 def _get_model():
@@ -78,7 +81,8 @@ def transcribe(audio_path: str) -> Transcript:
     except (TypeError, ValueError):
         pass
 
-    result = model.generate(audio_path, **kwargs)
+    with _infer_lock:                       # MLX 추론 직렬화(경합 방지)
+        result = model.generate(audio_path, **kwargs)
 
     text = (getattr(result, "text", "") or "").strip()
     language = getattr(result, "language", "") or "ko"
