@@ -4,7 +4,6 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import type { Clip } from "../types";
 import { fmtDuration, colorClass } from "../util";
-import ThumbScrub from "../components/ThumbScrub";
 
 const PAGE_SIZE = 50;
 
@@ -82,7 +81,12 @@ export default function TableView() {
       </div>
 
       {pageItems.length === 0 ? (
-        <div className="empty">조건에 맞는 클립이 없습니다.</div>
+        <div className="empty-state">
+          <div className="empty-art">🔍</div>
+          <h3>표시할 클립이 없습니다</h3>
+          <p>{clips.length === 0 ? "기본 페이지에서 영상을 추가하면 분석 결과가 여기에 정리됩니다." : "필터 조건에 맞는 클립이 없습니다. 조건을 바꿔보세요."}</p>
+          <Link to={`/project/${pid}`} className="btn secondary">← 기본 페이지로</Link>
+        </div>
       ) : (
         <table>
           <thead>
@@ -94,8 +98,10 @@ export default function TableView() {
           <tbody>
             {pageItems.map((c) => (
               <tr key={c.id} onClick={() => nav(`/project/${pid}/clip/${c.id}`)}>
-                <td onClick={(e) => e.stopPropagation()}>
-                  <ThumbScrub clip={c} />
+                <td>
+                  {c.thumbnail ? (
+                    <img className="thumb" src={api.thumbUrl(c.id)} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")} />
+                  ) : <div className="thumb" />}
                 </td>
                 <td>{c.filename}</td>
                 <td>{fmtDuration(c.duration_sec)}</td>

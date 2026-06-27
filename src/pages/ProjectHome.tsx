@@ -1,15 +1,16 @@
 // P3 기본페이지 — 좌 60% 영상 업로드/진행률, 우 40% 맥락 수정, 하단 탭바
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, pickFolder, pickPlan, isTauri } from "../api";
+import { api, pickVideos, pickPlan, isTauri } from "../api";
 import type { Clip, PlanContext } from "../types";
+import { toast, confirmDialog } from "../ui/feedback";
 
 export default function ProjectHome() {
   const { pid = "" } = useParams();
   const [ctx, setCtx] = useState<PlanContext & { name?: string }>();
   const [clips, setClips] = useState<Clip[]>([]);
-  const [folderPath, setFolderPath] = useState("");   // 브라우저 모드 경로 입력
-  const [scanMsg, setScanMsg] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => {
     api.listClips(pid).then(setClips).catch(() => {});
@@ -28,26 +29,45 @@ export default function ProjectHome() {
     return () => clearInterval(t);
   }, [clips, refresh]);
 
-  // 폴더 경로 방식: 영상은 복사하지 않고 원본 경로 그대로 분석.
-  // Tauri: 네이티브 폴더 다이얼로그 / 브라우저: 경로 직접 입력.
-  async function scanFolder(folder: string) {
-    if (!folder.trim()) return;
-    setScanMsg("폴더 스캔 중…");
-    try {
-      const r = await api.analyzeFolder(pid, folder.trim());
-      setScanMsg(`영상 ${r.found}개 발견 · ${r.queued}개 분석 시작` +
-        (r.found - r.queued > 0 ? ` (이미 분석된 ${r.found - r.queued}개 제외)` : ""));
+  // Tauri: 네이티브 다이얼로그로 경로 선택(대용량 MXF도 복사 없이 분석)
+  // 브라우저: 파일 input으로 바이트 업로드
+  async function addVideos() {
+    if (isTauri) {
+      const paths = await pickVideos();
+      if (!paths.length) return;
+      await api.analyzeVideos(pid, paths);
+      toast(`영상 ${paths.length}개 추가 — 분석을 시작합니다.`);
       refresh();
-    } catch (e) {
-      setScanMsg(`실패: ${e instanceof Error ? e.message : String(e)}`);
+    } else {
+      fileInput.current?.click();
     }
   }
 
-  async function pickAndScan() {
-    const folder = await pickFolder();
-    if (!folder) return;
-    setFolderPath(folder);
-    await scanFolder(folder);
+  async function onFilesPicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || !files.length) return;
+    const count = files.length;
+    await api.analyzeUpload(pid, files);
+    e.target.value = "";
+    toast(`영상 ${count}개 추가 — 분석을 시작합니다.`);
+    refresh();
+  }
+
+  // 끌어다 놓기로 영상 추가 (브라우저/데모). 영상 파일만 통과.
+  async function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    const dropped = Array.from(e.dataTransfer.files);
+    const vids = dropped.filter(
+      (f) => f.type.startsWith("video/") || /\.(mp4|mov|mxf|m4v)$/i.test(f.name)
+    );
+    if (!vids.length) {
+      if (dropped.length) toast("영상 파일만 추가할 수 있어요 (MP4·MOV·MXF).", "error");
+      return;
+    }
+    await api.analyzeUpload(pid, vids);
+    toast(`영상 ${vids.length}개 추가 — 분석을 시작합니다.`);
+    refresh();
   }
 
   async function reuploadPlan() {
@@ -58,15 +78,23 @@ export default function ProjectHome() {
     // 기획안 변경 → 기존 클립 추천도 재계산
     await api.recomputeScores(pid);
     refresh();
+    toast("기획안 반영 완료 — 추천도를 재계산했습니다.");
   }
 
   async function deleteClip(c: Clip) {
-    if (!confirm(`'${c.filename}' 영상을 목록에서 삭제할까요?`)) return;
+    const ok = await confirmDialog({
+      title: "영상 삭제",
+      msg: `'${c.filename}' 영상을 목록에서 삭제할까요?`,
+      confirmText: "삭제",
+      danger: true,
+    });
+    if (!ok) return;
     setClips((list) => list.filter((x) => x.id !== c.id)); // 낙관적 업데이트
     try {
       await api.deleteClip(c.id);
+      toast("영상을 삭제했습니다.");
     } catch {
-      alert("삭제에 실패했습니다.");
+      toast("삭제에 실패했습니다.", "error");
       refresh();
     }
   }
@@ -76,7 +104,7 @@ export default function ProjectHome() {
     await api.updatePlan(pid, ctx as PlanContext);
     await api.recomputeScores(pid);
     refresh();
-    alert("맥락 저장 + 추천도 재계산 완료");
+    toast("맥락 저장 + 추천도 재계산 완료");
   }
 
   const done = clips.filter((c) => c.status === "done").length;
@@ -91,32 +119,25 @@ export default function ProjectHome() {
       <div className="split" style={{ marginTop: 12 }}>
         {/* 좌 60% — 업로드 + 진행률 */}
         <div className="card" style={{ overflow: "auto" }}>
-          {isTauri ? (
-            <div className="dropzone" onClick={pickAndScan}>
-              <div style={{ fontSize: 28 }}>📁</div>
-              <div>영상 폴더 선택</div>
-              <div className="muted" style={{ fontSize: 12 }}>
-                폴더 안의 영상을 복사 없이 경로로 분석 (MP4 · MOV · MXF)
-              </div>
-            </div>
-          ) : (
-            <div className="card" style={{ background: "var(--panel-2)" }}>
-              <label>영상 폴더 경로</label>
-              <div className="row" style={{ gap: 8 }}>
-                <input
-                  placeholder="/Users/이름/Footage 처럼 폴더 경로 입력"
-                  value={folderPath}
-                  onChange={(e) => setFolderPath(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && scanFolder(folderPath)}
-                />
-                <button onClick={() => scanFolder(folderPath)}>분석</button>
-              </div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                사이드카가 같은 PC에서 해당 폴더의 영상을 복사 없이 읽어 분석합니다.
-              </div>
-            </div>
-          )}
-          {scanMsg && <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>{scanMsg}</p>}
+          <div
+            className={`dropzone ${dragging ? "drag" : ""}`}
+            onClick={addVideos}
+            onDragOver={(e) => { e.preventDefault(); if (!dragging) setDragging(true); }}
+            onDragLeave={(e) => { e.preventDefault(); setDragging(false); }}
+            onDrop={onDrop}
+          >
+            <div className="dropzone-icon">⬆</div>
+            <div className="dropzone-title">{dragging ? "여기에 놓으세요" : "영상을 끌어다 놓거나 클릭"}</div>
+            <div className="muted" style={{ fontSize: 12 }}>MP4 · MOV · MXF · M4V</div>
+          </div>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".mp4,.mov,.mxf,.m4v,video/*"
+            multiple
+            style={{ display: "none" }}
+            onChange={onFilesPicked}
+          />
 
           <h2>분석 진행</h2>
           {clips.length === 0 ? (

@@ -120,14 +120,14 @@ export const mockApi = {
   async pickVideos(): Promise<string[]> {
     return ["/demo/A001.MOV", "/demo/A002.MOV", "/demo/A003.MOV"];
   },
-  async analyzeVideos(_pid: string, paths: string[]): Promise<{ clip_ids: string[] }> {
+  async analyzeVideos(pid: string, paths: string[]): Promise<{ clip_ids: string[] }> {
     const ids: string[] = [];
     paths.forEach((path, idx) => {
       const id = `clip-${Object.keys(clips).length + idx}`;
       const i = Object.keys(clips).length + idx;
       clips[id] = {
         id,
-        project_id: "demo",
+        project_id: pid,
         filename: path.split("/").pop() || path,
         filepath: path,
         status: "queued",
@@ -142,7 +142,7 @@ export const mockApi = {
         const c = clips[id];
         if (pct >= 100) {
           clearInterval(timer);
-          clips[id] = { ...seedClip(i), id, status: "done" };
+          clips[id] = { ...seedClip(i), id, project_id: pid, status: "done" };
         } else {
           c.progress = Math.round(pct);
           c.stage = pct < 35 ? "전처리" : pct < 60 ? "장면 설명(VLM)" : "콘텐츠 분석";
@@ -153,7 +153,7 @@ export const mockApi = {
   },
   async listClips(pid: string): Promise<Clip[]> {
     return Object.values(clips)
-      .filter((c) => c.project_id === pid || pid === "demo")
+      .filter((c) => c.project_id === pid)
       .sort((a, b) => a.filename.localeCompare(b.filename));
   },
   async getClip(cid: string): Promise<Clip> {
