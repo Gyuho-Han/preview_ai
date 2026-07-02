@@ -28,9 +28,17 @@ def cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
+# bge-m3 코사인 유사도의 실사용 분포에 맞춘 매핑 구간.
+# 무관한 한국어 텍스트 쌍도 0.3 안팎이 나오고, 밀접한 쌍은 0.7~0.85 수준이라
+# (cos+1)/2 방식은 무관한 클립도 65~80점이 되어 변별력이 없었다.
+_COS_LO = 0.30   # 이하 → 0점 (무관)
+_COS_HI = 0.85   # 이상 → 100점 (매우 밀접)
+
+
 def relevance_score(clip_text: str, plan_embedding: list[float]) -> float:
     """클립 텍스트 vs 기획안 임베딩 → 0~100.
-    코사인(-1~1)을 0~1로 매핑 후 100 스케일."""
+    코사인 유사도를 실사용 범위 [0.30, 0.85] 기준으로 선형 매핑."""
     clip_emb = embed(clip_text)
     cos = cosine(clip_emb, plan_embedding)
-    return round(max(0.0, min(100.0, (cos + 1) / 2 * 100)), 1)
+    scaled = (cos - _COS_LO) / (_COS_HI - _COS_LO)
+    return round(max(0.0, min(100.0, scaled * 100)), 1)

@@ -147,10 +147,15 @@ export default function ClipDetail() {
               <li
                 key={i}
                 className={preview?.ready ? "scene-clickable" : ""}
-                onClick={() => preview?.ready && seekTo(parseTs(s.time))}
+                onClick={() => preview?.ready && seekTo(s.t ?? parseTs(s.time))}
               >
                 <span className="scene-time">{s.time || "—"}</span>
-                <span>{s.desc}</span>
+                <span>
+                  {s.desc}
+                  {s.speech && (
+                    <span className="scene-speech">🎙 {s.speech}</span>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

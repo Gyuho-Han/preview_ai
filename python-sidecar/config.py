@@ -95,7 +95,10 @@ class Settings:
     # 장면 전환 검출 (키프레임을 균등 간격 대신 장면 경계에서 선택)
     scene_detect: bool = True
     scene_threshold: float = 0.5      # 히스토그램 Bhattacharyya 거리 컷 임계값(0~1)
-    scene_sample_fps: float = 2.0     # 장면 스캔 시 초당 검사 프레임 수
+
+    # VAD(Silero) — 말소리 판정 확률 임계값 / 클립에 말소리가 있다고 볼 최소 총량(초)
+    vad_threshold: float = 0.5
+    vad_min_total_speech: float = 0.6
 
     # 동시 분석 클립 수(0=RAM 기준 자동). 올리면 전처리가 추론과 겹쳐 빨라짐.
     concurrency_override: int = 0
@@ -126,7 +129,8 @@ class Settings:
         self.keyframe_per_minute = float(_pick("KEYFRAME_PER_MINUTE", "preprocess", "keyframe_per_minute", default=1.0))
         self.scene_detect = bool(_pick("SCENE_DETECT", "preprocess", "scene_detect", default=True))
         self.scene_threshold = float(_pick("SCENE_THRESHOLD", "preprocess", "scene_threshold", default=0.5))
-        self.scene_sample_fps = float(_pick("SCENE_SAMPLE_FPS", "preprocess", "scene_sample_fps", default=2.0))
+        self.vad_threshold = float(_pick("VAD_THRESHOLD", "preprocess", "vad_threshold", default=0.5))
+        self.vad_min_total_speech = float(_pick("VAD_MIN_TOTAL_SPEECH", "preprocess", "vad_min_total_speech", default=0.6))
         self.concurrency_override = int(_pick("CONCURRENCY", "runtime", "concurrency", default=0))
         self.scrub_interval = float(_pick("SCRUB_INTERVAL", "preprocess", "scrub_interval", default=1.0))
 

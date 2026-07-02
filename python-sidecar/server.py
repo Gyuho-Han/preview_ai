@@ -96,6 +96,22 @@ def _load() -> None:
 _load()
 
 
+def _log_vad_status() -> None:
+    """시작 시 VAD 가용 여부를 명확히 출력(조용한 폴백으로 인한 환각 재발 방지)."""
+    import sys
+
+    import vad as vad_mod
+    if vad_mod.available():
+        print("[vad] Silero VAD 활성 — 말소리 구간만 STT에 전달됩니다.")
+    else:
+        print("[vad] 경고: pysilero-vad 미설치/로드 실패 — 예전 RMS 방식으로 폴백 중. "
+              "비음성 클립에서 자막 환각이 재발합니다. 해결: 사이드카 파이썬 환경에서 "
+              "`pip install pysilero-vad` 후 재시작", file=sys.stderr)
+
+
+_log_vad_status()
+
+
 # ---- 스키마 ----------------------------------------------------------------
 class ProjectCreate(BaseModel):
     name: str = ""
@@ -126,6 +142,8 @@ class FolderRequest(BaseModel):
 # ---- 헬스/설정 -------------------------------------------------------------
 @app.get("/health")
 def health() -> dict:
+    import vad as vad_mod
+
     return {
         "ok": True,
         "ram_gb": settings.ram_gb,
@@ -136,6 +154,9 @@ def health() -> dict:
             "asr": settings.asr_model,
         },
         "concurrency": settings.concurrency,
+        # false면 pysilero-vad 미설치 → 비음성 클립에서 ASR 환각이 재발한다.
+        # (conda preview 환경에서 `pip install pysilero-vad` 후 사이드카 재시작)
+        "vad": vad_mod.available(),
     }
 
 
@@ -301,10 +322,48 @@ def update_plan(pid: str, body: PlanContext) -> dict:
 
 
 # ---- P3/P4 분석 작업 큐 ----------------------------------------------------
-def _run_analysis(clip_id: str, project_id: str, video_path: str) -> None:
+def _ensure_plan_embedding(pid: str) -> list[float] | None:
+    """기획안 임베딩 반환. 없으면 topic/keywords로 재계산해 캐시.
+
+    임베딩은 디스크에 저장하지 않으므로(_persist에서 제외) 사이드카 재시작 후엔
+    사라진다. 예전엔 이때 relevance가 조용히 0이 되어 '기획서 기반 분석이 안 되는'
+    버그가 있었다 → 재시작 후 첫 분석 때 지연 재계산한다."""
     with _lock:
-        plan_emb = _projects.get(project_id, {}).get("_plan_embedding") or None
-        plan_kw = _projects.get(project_id, {}).get("keywords", [])
+        proj = _projects.get(pid) or {}
+        emb = proj.get("_plan_embedding")
+        basis = " ".join(
+            [proj.get("topic", "")] + list(proj.get("keywords") or [])
+        ).strip()
+    if emb:
+        return emb
+    if not basis:
+        return None
+    try:
+        import embed as embed_mod
+        emb = embed_mod.embed(basis)
+    except Exception:
+        return None
+    with _lock:
+        if pid in _projects:
+            _projects[pid]["_plan_embedding"] = emb
+    return emb
+
+
+def _run_analysis(clip_id: str, project_id: str, video_path: str) -> None:
+    plan_emb = _ensure_plan_embedding(project_id)
+    with _lock:
+        proj = _projects.get(project_id, {}) or {}
+        plan_kw = proj.get("keywords", [])
+        # 최종 요약이 기획서 방향까지 반영하도록 full context를 함께 전달
+        plan_context = {
+            "title": proj.get("title", "") or proj.get("name", ""),
+            "topic": proj.get("topic", ""),
+            "characters": proj.get("characters", []),
+            "locations": proj.get("locations", []),
+            "tone_mood": proj.get("tone_mood", ""),
+            "keywords": plan_kw,
+            "extra_context": proj.get("extra_context", ""),
+        }
 
     def _progress(stage: str, pct: int) -> None:
         with _lock:
@@ -317,6 +376,7 @@ def _run_analysis(clip_id: str, project_id: str, video_path: str) -> None:
         result = analyzer.analyze_video(
             video_path, plan_emb, plan_kw, progress=_progress,
             frames_dir=os.path.join(DATA_DIR, "frames", clip_id),
+            plan_context=plan_context,
         )
         with _lock:
             _clips[clip_id].update(result)
@@ -432,10 +492,23 @@ async def analyze_upload(pid: str, files: list[UploadFile] = File(...)) -> dict:
     return {"clip_ids": clip_ids}
 
 
+# 표(P4)·프로젝트 홈에 필요한 필드만 목록으로 반환.
+# transcript/segments/scene_descriptions/frames 경로 같은 큰 필드는 상세(/clips/{cid})에서만.
+# (표가 1.5초 간격으로 폴링하므로 목록 페이로드가 크면 클립 수에 비례해 낭비가 커진다)
+_LIST_FIELDS = (
+    "id", "project_id", "filename", "status", "stage", "progress", "error",
+    "duration_sec", "date", "place", "camera", "people", "one_line",
+    "keywords", "recommendation", "color", "has_speech", "frame_times",
+)
+
+
 @app.get("/projects/{pid}/clips")
 def list_clips(pid: str) -> list[dict]:
     with _lock:
-        items = [c for c in _clips.values() if c["project_id"] == pid]
+        items = [
+            {k: c[k] for k in _LIST_FIELDS if k in c}
+            for c in _clips.values() if c["project_id"] == pid
+        ]
     # P4 기본 정렬: 촬영 날짜 오름차순(같으면 파일명)
     items.sort(key=lambda c: (c.get("date", ""), c.get("filename", "")))
     return items
@@ -456,25 +529,35 @@ def recompute_scores(pid: str) -> dict:
     import embed as embed_mod
     import scoring
 
+    plan_emb = _ensure_plan_embedding(pid)
     with _lock:
-        plan_emb = _projects.get(pid, {}).get("_plan_embedding") or None
-        clips = [c for c in _clips.values()
-                 if c["project_id"] == pid and c.get("status") == "done"]
-    for c in clips:
-        clip_text = " ".join(
-            [c.get("transcript", "")]
-            + c.get("scene_descriptions", [])
-            + c.get("keywords", [])
-        ).strip()
+        snapshot = [
+            (cid, " ".join(
+                [c.get("transcript", "")]
+                + c.get("scene_descriptions", [])
+                + c.get("keywords", [])
+            ).strip(), c.get("quality", 0.0))
+            for cid, c in _clips.items()
+            if c["project_id"] == pid and c.get("status") == "done"
+        ]
+
+    # 임베딩 계산(네트워크 호출)은 락 밖에서, 결과 반영은 락 안에서 일괄 적용
+    results: list[tuple[str, float, int]] = []
+    for cid, clip_text, quality in snapshot:
         relevance = (embed_mod.relevance_score(clip_text, plan_emb)
                      if plan_emb else 0.0)
-        rec = scoring.recommendation(relevance, c.get("quality", 0.0))
-        with _lock:
+        results.append((cid, relevance, scoring.recommendation(relevance, quality)))
+
+    with _lock:
+        for cid, relevance, rec in results:
+            c = _clips.get(cid)
+            if not c:
+                continue  # 재계산 중 삭제된 클립
             c["relevance"] = relevance
             c["recommendation"] = rec
             c["color"] = scoring.color_for(rec)
     _persist()
-    return {"updated": len(clips)}
+    return {"updated": len(results)}
 
 
 @app.get("/thumb/{cid}")

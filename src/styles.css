@@ -350,6 +350,12 @@ tbody tr:last-child td { border-bottom: none; }
   color: var(--accent-2); font-variant-numeric: tabular-nums; min-width: 54px;
   font-weight: 700; font-size: 13px;
 }
+/* 장면 아래 해당 구간 음성 자막 */
+.scene-speech {
+  display: block; margin-top: 6px; padding-left: 10px;
+  border-left: 2px solid var(--border);
+  color: var(--text-2); font-size: 13px; line-height: 1.5;
+}
 .big-score {
   font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;

@@ -9,3 +9,4 @@ python-sidecar/*.spec
 .venv/
 *.pyc
 .DS_Store
+vite.config.ts.timestamp-*.mjs
