@@ -45,6 +45,8 @@ export interface PlanContext {
 export interface Scene {
   time: string;
   desc: string;
+  t?: number;       // 장면 시각(초) — 정확한 시크·자막 매핑용
+  speech?: string;  // 이 장면 구간([이 장면, 다음 장면))의 음성 자막
 }
 
 export type ClipStatus = "queued" | "done" | "error";
