@@ -1,6 +1,6 @@
 // P4 표 페이지 — 9컬럼 스프레드시트, 추천도 색상바, 필터, 정렬, 페이지네이션, 실시간
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import type { Clip } from "../types";
 import { fmtDuration, colorClass } from "../util";
@@ -11,14 +11,15 @@ const PAGE_SIZE = 50;
 export default function TableView() {
   const { pid = "" } = useParams();
   const nav = useNavigate();
+  const [sp] = useSearchParams();
   const [clips, setClips] = useState<Clip[]>([]);
   const [page, setPage] = useState(1);
 
-  // 필터
+  // 필터 (대시보드에서 ?min= 로 진입하면 추천도 필터 초기값 반영)
   const [fPlace, setFPlace] = useState("");
   const [fCamera, setFCamera] = useState("");
   const [fPerson, setFPerson] = useState("");
-  const [fMinScore, setFMinScore] = useState(0);
+  const [fMinScore, setFMinScore] = useState(Number(sp.get("min")) || 0);
 
   const refresh = useCallback(() => {
     api.listClips(pid).then(setClips).catch(() => {});

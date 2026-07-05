@@ -11,6 +11,10 @@ import ClipDetail from "./pages/ClipDetail";
 import "./fonts/pretendard.css";
 import "./styles.css";
 
+// 초기 테마를 렌더 전에 적용해 플래시 방지 (기본: 화이트)
+document.documentElement.dataset.theme =
+  localStorage.getItem("theme") || "light";
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <HashRouter>
