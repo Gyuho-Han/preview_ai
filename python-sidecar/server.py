@@ -10,6 +10,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
+
+# PyInstaller 번들로 실행될 때(배포 빌드): 같은 폴더(Contents/MacOS)에 동봉된
+# ffmpeg/ffprobe/ollama를 subprocess 호출이 찾을 수 있도록 PATH 맨 앞에 추가.
+if getattr(sys, "frozen", False):
+    os.environ["PATH"] = (
+        os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", "")
+    )
+
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
