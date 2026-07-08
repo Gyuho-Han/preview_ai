@@ -414,6 +414,7 @@ tbody tr:last-child td { border-bottom: none; }
 /* 표 썸네일 호버 미리보기(B) */
 .thumb-scrub { position: relative; width: 72px; }
 .thumb-scrub .thumb { display: block; }
+.thumb-scrub .thumb-video { object-fit: cover; background: #000; }
 .thumb-scrub .scrub-time { position: absolute; top: 2px; right: 3px; font-size: 9px;
   padding: 0 4px; border-radius: 4px; background: rgba(0,0,0,.66); color: #fff;
   font-variant-numeric: tabular-nums; pointer-events: none; }
