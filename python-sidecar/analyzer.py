@@ -106,10 +106,20 @@ def analyze_video(video_path: str,
         pre = preprocess.preprocess(video_path, workdir, strip_dir=strip_dir)
 
         # 2. STT — VAD가 찾은 '말소리 구간'만 잘라 인식 (비음성 환각 차단)
+        #    STT(mlx) 로드/추론 실패가 클립 전체를 죽이지 않도록 방어:
+        #    실패 시 자막만 비우고 VLM·추천도 등 나머지 단계는 정상 진행한다.
         transcript = stt.Transcript(text="", segments=[])
         if pre.has_speech and pre.audio_path:
             _p("음성 인식(Qwen3-ASR)", 35)
-            transcript = stt.transcribe(pre.audio_path, regions=pre.speech_regions)
+            try:
+                transcript = stt.transcribe(pre.audio_path, regions=pre.speech_regions)
+            except Exception as e:  # noqa: BLE001 — STT 실패는 치명적이지 않게
+                import sys
+                import traceback
+                print(f"[stt] 자막 생성 실패 — 자막 없이 VLM 단독으로 진행: {e}",
+                      file=sys.stderr)
+                traceback.print_exc()
+                transcript = stt.Transcript(text="", segments=[])
         else:
             _p("음성 없음 — VLM 단독 분기", 35)
 
