@@ -28,14 +28,21 @@ copy_bin() {
     cp "$src" "$BIN/$name-$TRIPLE"
     chmod +x "$BIN/$name-$TRIPLE"
     echo "✓ $name → bin/$name-$TRIPLE"
+    # brew 등 로컬 dylib에 의존하면 다른 Mac에서 실행 불가 → 경고
+    if otool -L "$BIN/$name-$TRIPLE" | grep -qE "/opt/homebrew|/usr/local/(opt|Cellar)"; then
+      echo "  ⚠ $name 이(가) Homebrew dylib에 의존합니다 — 다른 Mac에서 실행되지 않습니다!"
+      echo "    정적(static) 빌드로 교체하세요: https://www.osxexperts.net (Apple Silicon용 ffmpeg/ffprobe)"
+      echo "    받은 파일을 $BIN/$name-$TRIPLE 로 덮어쓰면 됩니다."
+    fi
   else
     echo "✗ $name 미설치 — 먼저 설치하세요 (예: brew install $name)"
   fi
 }
 
-echo "▶ ollama / ffmpeg 복사"
+echo "▶ ollama / ffmpeg / ffprobe 복사"
 copy_bin ollama
 copy_bin ffmpeg
+copy_bin ffprobe
 
 echo "▶ Python 사이드카 PyInstaller 번들"
 cd "$ROOT/python-sidecar"
