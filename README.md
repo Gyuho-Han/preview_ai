@@ -257,5 +257,5 @@ Apple Developer 계정(연 $99)으로 Developer ID 서명 + 공증(notarization)
 추후 사이클: Twelve Labs(드라마틱 지수), NLE 직접 연동, 자연어 검색, 웹 전환.
 
 dmg 파일 링크
-https://drive.google.com/file/d/1X8qLTUSMHWGVoJY9d7FbEExsCRnBe4S7/view?usp=drive_link
+https://drive.google.com/file/d/1X8qLTUSMHWGVoJY9d7FbEExsCRnBe4S7/view?usp=sharing
 
