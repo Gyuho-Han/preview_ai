@@ -53,10 +53,16 @@
       "targets": ["app", "dmg"],
       "identifier": "ai.preview.app",
       "icon": ["icons/icon.icns"],
-      "externalBin": [],
+      "externalBin": [
+        "bin/preview-sidecar",
+        "bin/ollama",
+        "bin/ffmpeg",
+        "bin/ffprobe"
+      ],
       "resources": [],
       "macOS": {
-        "minimumSystemVersion": "12.0"
+        "minimumSystemVersion": "12.0",
+        "entitlements": "entitlements.plist"
       }
     },
     "windows": [

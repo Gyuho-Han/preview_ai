@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- PyInstaller onefile 사이드카가 임시폴더에 풀어놓는 미서명 .so/.dylib 로딩 허용
+       (hardened runtime의 library validation에 막혀 사이드카가 죽는 것을 방지) -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <!-- Python/mlx 등 JIT·실행가능 메모리 사용 허용 -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- PyInstaller가 DYLD_* 환경변수를 설정하는 경우 허용 -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+</dict>
+</plist>

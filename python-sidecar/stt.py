@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import inspect
+import math
 import os
 import re
 import threading
@@ -134,6 +135,60 @@ def _dedupe_segments(segments: list[dict]) -> list[dict]:
     return out
 
 
+# ---- 근사 타임스탬프 합성 ---------------------------------------------------
+# Qwen3-ASR(mlx-audio)이 세그먼트 타임스탬프를 주지 않는 경우, 텍스트를
+# 문장 단위로 쪼개고 글자 수에 비례해 구간 [t0, t1]의 시간을 배분한다.
+# 정확하진 않지만 "모든 텍스트가 구간 시작 시각에 몰리는" 문제를 해결한다.
+_SENT_RE = re.compile(r"[^.!?…]+[.!?…]*\s*")
+_TARGET_SEG_SEC = 6.0   # 세그먼트 하나가 커버할 목표 길이(초)
+
+
+def _synthesize_segments(text: str, t0: float, t1: float) -> list[dict]:
+    """text를 문장(길면 어절 묶음)으로 나눠 [t0, t1]에 비례 배분한 세그먼트 생성."""
+    text = text.strip()
+    if not text:
+        return []
+    dur = max(0.0, t1 - t0)
+
+    # 1) 문장 단위 분할 (구두점 없으면 전체가 한 덩어리)
+    pieces = [p.strip() for p in _SENT_RE.findall(text) if p.strip()] or [text]
+
+    # 2) 너무 긴 문장은 어절 묶음으로 추가 분할 (예상 할당 시간 > 2×목표)
+    total_chars = sum(len(p) for p in pieces) or 1
+    refined: list[str] = []
+    for p in pieces:
+        est = dur * len(p) / total_chars
+        words = p.split()
+        if est > _TARGET_SEG_SEC * 2 and len(words) > 1:
+            n_chunks = max(2, math.ceil(est / _TARGET_SEG_SEC))
+            per = max(1, math.ceil(len(words) / n_chunks))
+            for i in range(0, len(words), per):
+                refined.append(" ".join(words[i:i + per]))
+        else:
+            refined.append(p)
+
+    # 3) 글자 수 비례로 시간 배분
+    total_chars = sum(len(p) for p in refined) or 1
+    out: list[dict] = []
+    cur = t0
+    for p in refined:
+        width = dur * len(p) / total_chars
+        out.append({"start": round(cur, 2),
+                    "end": round(min(t1, cur + width), 2),
+                    "text": p})
+        cur += width
+    out[-1]["end"] = round(t1, 2)
+    return out
+
+
+def _wav_duration(path: str) -> float:
+    try:
+        with wave.open(path, "rb") as wf:
+            return wf.getnframes() / float(wf.getframerate())
+    except Exception:
+        return 0.0
+
+
 # ---- 모델 싱글톤 (최초 1회 로드 후 재사용) ---------------------------------
 _model = None
 _model_lock = threading.Lock()
@@ -246,12 +301,14 @@ def transcribe(audio_path: str,
             text, segs = _filter_chinese(text, segs)
             if not text or _is_degenerate(text):
                 continue
-            if segs:
+            # 모델이 진짜 타임스탬프를 준 경우(세그먼트 2개 이상, 또는 짧은 구간의
+            # 단일 세그먼트)만 그대로 쓰고, 아니면 문장 비례 근사 타임스탬프 합성
+            if segs and (len(segs) >= 2 or (t1 - t0) <= _TARGET_SEG_SEC * 2):
                 for s in segs:              # 구간 시작 시각으로 보정
                     s["start"] = round(s["start"] + t0, 2)
                     s["end"] = round(s["end"] + t0, 2)
-            else:                           # 모델이 세그먼트를 안 주면 구간으로 대체
-                segs = [{"start": round(t0, 2), "end": round(t1, 2), "text": text}]
+            else:
+                segs = _synthesize_segments(text, t0, t1)
             all_segments.extend(segs)
             texts.append(text)
     else:
@@ -260,6 +317,8 @@ def transcribe(audio_path: str,
         text, segs = _filter_chinese(text, segs)
         if text and not _is_degenerate(text):
             texts.append(text)
+            if len(segs) < 2:               # 타임스탬프 없음 → 파일 전체에 비례 배분
+                segs = _synthesize_segments(text, 0.0, _wav_duration(audio_path))
             all_segments = segs
 
     all_segments = _dedupe_segments(all_segments)
