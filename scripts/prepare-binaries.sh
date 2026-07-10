@@ -24,6 +24,11 @@ echo "▶ 타깃 트리플: $TRIPLE"
 copy_bin() {
   local name="$1"
   local src
+  # 이미 준비된 바이너리는 보존 (정적 빌드로 교체해둔 ffmpeg/ffprobe 보호)
+  if [ -f "$BIN/$name-$TRIPLE" ]; then
+    echo "✓ $name 이미 존재 — 건너뜀 (강제 갱신은 파일 삭제 후 재실행)"
+    return
+  fi
   if src="$(command -v "$name" 2>/dev/null)"; then
     cp "$src" "$BIN/$name-$TRIPLE"
     chmod +x "$BIN/$name-$TRIPLE"
