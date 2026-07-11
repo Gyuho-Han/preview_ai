@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import type { Clip } from "../types";
-import { fmtDuration, colorClass } from "../util";
+import { fmtDuration, colorClass, scoreLabel } from "../util";
 
 const DONUT_C = 2 * Math.PI * 52;
 
@@ -117,6 +117,9 @@ export default function ClipDetail() {
             <p style={{ marginTop: 14, fontSize: 15 }}>{clip.one_line}</p>
           </div>
           <div className="rec-box">
+            <span className={`score-label c-${cc}`}>
+              <span className={`dot bg-${cc}`} />{scoreLabel(clip.color)}
+            </span>
             <DonutScore value={clip.recommendation ?? 0} cc={cc} />
             <div className="rec-sub">연관성 {clip.relevance ?? 0} · 품질 {clip.quality ?? 0}</div>
           </div>

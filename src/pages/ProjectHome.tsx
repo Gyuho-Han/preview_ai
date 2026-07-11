@@ -298,9 +298,9 @@ export default function ProjectHome() {
 
   // 추천도 분포
   const dist = useMemo(() => {
-    const g = doneClips.filter((c) => colorClass(c.color) === "green").length;
-    const y = doneClips.filter((c) => colorClass(c.color) === "yellow").length;
-    const r = doneClips.filter((c) => colorClass(c.color) === "red").length;
+    const g = doneClips.filter((c) => colorClass(c.color) === "rec").length;
+    const y = doneClips.filter((c) => colorClass(c.color) === "ok").length;
+    const r = doneClips.filter((c) => colorClass(c.color) === "low").length;
     return { g, y, r, total: g + y + r };
   }, [doneClips]);
   const pctOf = (n: number) => (dist.total ? Math.round((n / dist.total) * 100) : 0);
@@ -397,18 +397,18 @@ export default function ProjectHome() {
               <DistChart scores={scores} onPick={(min) => nav(`/project/${pid}/table${min ? `?min=${min}` : ""}`)} />
               <div className="dist-segs">
                 <button className="dist-seg-card" onClick={() => nav(`/project/${pid}/table`)}>
-                  <div className="seg-top"><i className="dot bg-red" /> 0 – 49%</div>
-                  <div className="seg-num c-red">{dist.r}</div>
+                  <div className="seg-top"><i className="dot bg-low" /> 낮음 · 0–49%</div>
+                  <div className="seg-num c-low">{dist.r}</div>
                   <div className="seg-pct">{pctOf(dist.r)}%</div>
                 </button>
                 <button className="dist-seg-card" onClick={() => nav(`/project/${pid}/table?min=50`)}>
-                  <div className="seg-top"><i className="dot bg-yellow" /> 50 – 79%</div>
-                  <div className="seg-num c-yellow">{dist.y}</div>
+                  <div className="seg-top"><i className="dot bg-ok" /> 보통 · 50–79%</div>
+                  <div className="seg-num c-ok">{dist.y}</div>
                   <div className="seg-pct">{pctOf(dist.y)}%</div>
                 </button>
-                <button className="dist-seg-card is-green" onClick={() => nav(`/project/${pid}/table?min=80`)}>
-                  <div className="seg-top"><i className="dot bg-green" /> 80% 이상</div>
-                  <div className="seg-num c-green">{dist.g}</div>
+                <button className="dist-seg-card is-rec" onClick={() => nav(`/project/${pid}/table?min=80`)}>
+                  <div className="seg-top"><i className="dot bg-rec" /> 추천 · 80%+</div>
+                  <div className="seg-num c-rec">{dist.g}</div>
                   <div className="seg-pct">{pctOf(dist.g)}%</div>
                 </button>
               </div>
@@ -421,9 +421,9 @@ export default function ProjectHome() {
                 <span className="muted">사용 패턴 기반 추천</span>
               </div>
               <button className="qa-item" onClick={() => nav(`/project/${pid}/table?min=80`)}>
-                <span className="qa-ic is-green">★</span>
+                <span className="qa-ic is-rec">★</span>
                 <span className="qa-text"><b>AI 선별 씬 보기</b><small>추천 80%+ · {dist.g}개</small></span>
-                <span className="qa-tag is-green">자주 사용</span>
+                <span className="qa-tag is-rec">자주 사용</span>
               </button>
               <button className="qa-item" onClick={() => setTab("upload")}>
                 <span className="qa-ic">⬆</span>

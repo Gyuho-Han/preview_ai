@@ -38,6 +38,16 @@
   --yellow-soft: rgba(251, 191, 36, 0.15);
   --red-soft: rgba(248, 113, 113, 0.15);
 
+  /* 추천지수 라벨 전용 색 (추천=로열블루 · 보통=앰버 · 낮음=회색, 색맹 안전).
+     연결상태·성공/실패 표시는 위 green/yellow/red를 계속 쓰고, 이 세 개는
+     "추천도" 라벨(scoreLabel/colorClass, util.ts)에만 쓴다. */
+  --rec: #2563eb;
+  --ok: #d97706;
+  --low: #9ca3af;
+  --rec-soft: rgba(37, 99, 235, 0.15);
+  --ok-soft: rgba(217, 119, 6, 0.15);
+  --low-soft: rgba(156, 163, 175, 0.15);
+
   /* 그림자 */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
@@ -429,13 +439,17 @@ tbody tr:last-child td { border-bottom: none; }
   opacity: 0; transition: opacity .12s; }
 .thumb-scrub .scrub-bar.on .scrub-handle { opacity: 1; }
 
-.score { display: flex; align-items: center; gap: 10px; min-width: 130px; }
+.score { display: flex; align-items: center; gap: 8px; min-width: 168px; }
 .score-bar { flex: 1; height: 8px; background: var(--panel-3); border-radius: 999px; overflow: hidden; }
 .score-bar > div { height: 100%; border-radius: 999px; transition: width .3s; }
 .score-num { font-variant-numeric: tabular-nums; font-weight: 700; width: 36px; }
 .c-green { color: var(--green); } .bg-green { background: var(--green); }
 .c-yellow { color: var(--yellow); } .bg-yellow { background: var(--yellow); }
 .c-red { color: var(--red); } .bg-red { background: var(--red); }
+.c-rec { color: var(--rec); } .bg-rec { background: var(--rec); }
+.c-ok  { color: var(--ok);  } .bg-ok  { background: var(--ok);  }
+.c-low { color: var(--low); } .bg-low { background: var(--low); }
+.score-label { display: inline-flex; align-items: center; font-size: 12px; font-weight: 700; }
 
 .filters {
   display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0;
@@ -961,17 +975,17 @@ button.danger:hover, .btn.danger:hover {
 
 /* 분포 차트 */
 .dist-chart { width: 100%; height: auto; display: block; margin: 4px 0; overflow: visible; }
-.dc-fill-red { fill: var(--muted); opacity: 0.12; }
-.dc-fill-yel { fill: var(--yellow); opacity: 0.16; }
-.dc-fill-grn { fill: var(--green); opacity: 0.18; }
+.dc-fill-red { fill: var(--low); opacity: 0.14; }
+.dc-fill-yel { fill: var(--ok); opacity: 0.16; }
+.dc-fill-grn { fill: var(--rec); opacity: 0.18; }
 .dc-base { stroke: var(--border); stroke-width: 1.5; }
 .dc-thresh { stroke: var(--border-strong); stroke-width: 1.5; stroke-dasharray: 5 6; }
-.dc-thresh-grn { stroke: var(--green); stroke-width: 1.5; stroke-dasharray: 6 6; }
+.dc-thresh-grn { stroke: var(--rec); stroke-width: 1.5; stroke-dasharray: 6 6; }
 .dc-line { fill: none; stroke: var(--muted); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
-.dc-line-grn { fill: none; stroke: var(--green); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.dc-line-grn { fill: none; stroke: var(--rec); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
 .dc-dot { fill: var(--panel); stroke: var(--text); stroke-width: 5; }
-.dc-dot-grn { fill: var(--panel); stroke: var(--green); stroke-width: 5; }
-.dc-pill { fill: var(--green); }
+.dc-dot-grn { fill: var(--panel); stroke: var(--rec); stroke-width: 5; }
+.dc-pill { fill: var(--rec); }
 .dc-pill-t { fill: #fff; font-size: 19px; font-weight: 700; }
 .dc-tick { fill: var(--muted); font-size: 24px; font-weight: 600; }
 
@@ -985,8 +999,8 @@ button.danger:hover, .btn.danger:hover {
   display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 16px 10px; color: var(--text);
 }
 .dist-seg-card:hover { background: var(--hover); transform: none; box-shadow: none; }
-.dist-seg-card.is-green { background: var(--green-soft); }
-.dist-seg-card.is-green:hover { background: rgba(52,211,153,0.2); }
+.dist-seg-card.is-rec { background: var(--rec-soft); }
+.dist-seg-card.is-rec:hover { background: rgba(37,99,235,0.2); }
 .seg-top { font-size: 12px; color: var(--muted); font-weight: 600; }
 .seg-num { font-size: 26px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 .seg-pct { font-size: 12px; color: var(--muted); }
@@ -1005,7 +1019,7 @@ button.danger:hover, .btn.danger:hover {
   display: flex; align-items: center; justify-content: center;
   background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
 }
-.qa-ic.is-green { background: var(--green-soft); color: var(--green); border-color: rgba(52,211,153,0.3); }
+.qa-ic.is-rec { background: var(--rec-soft); color: var(--rec); border-color: rgba(37,99,235,0.3); }
 .qa-text { display: flex; flex-direction: column; gap: 2px; margin-right: auto; }
 .qa-text b { font-size: 14px; font-weight: 600; }
 .qa-text small { font-size: 12px; color: var(--muted); }
@@ -1013,7 +1027,7 @@ button.danger:hover, .btn.danger:hover {
   flex: none; font-size: 11.5px; font-weight: 600; color: var(--muted);
   background: var(--panel-2); border: 1px solid var(--border); padding: 4px 10px; border-radius: 999px;
 }
-.qa-tag.is-green { color: var(--green); background: var(--green-soft); border-color: rgba(52,211,153,0.3); }
+.qa-tag.is-rec { color: var(--rec); background: var(--rec-soft); border-color: rgba(37,99,235,0.3); }
 
 /* ============================================================
    맥락 설정 탭 — 프로토타입 반영

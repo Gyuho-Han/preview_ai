@@ -122,8 +122,8 @@ function HeroDemo() {
             </div>
           </div>
           <div className="proc-scorebox">
-            <div className="proc-score-num c-green">{score}<small>%</small></div>
-            <div className="proc-score-cap">추천도</div>
+            <div className="proc-score-num c-rec">{score}<small>%</small></div>
+            <div className="proc-score-cap">추천</div>
             <div className="proc-score-sub">연관성 95 · 품질 88</div>
           </div>
         </div>

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import type { Clip } from "../types";
-import { fmtDuration, colorClass } from "../util";
+import { fmtDuration, colorClass, scoreLabel } from "../util";
 import ThumbScrub from "../components/ThumbScrub";
 
 const PAGE_SIZE = 50;
@@ -77,8 +77,8 @@ export default function TableView() {
         <input placeholder="등장인물" value={fPerson} onChange={(e) => setFPerson(e.target.value)} />
         <select value={fMinScore} onChange={(e) => setFMinScore(Number(e.target.value))}>
           <option value={0}>추천도 전체</option>
-          <option value={80}>80%+ (초록)</option>
-          <option value={50}>50%+ (노랑 이상)</option>
+          <option value={80}>추천 (80%+)</option>
+          <option value={50}>보통 이상 (50%+)</option>
         </select>
       </div>
 
@@ -112,6 +112,7 @@ export default function TableView() {
                 <td style={{ maxWidth: 280 }}>{c.one_line || "—"}</td>
                 <td>
                   <div className="score">
+                    <span className={`score-label c-${colorClass(c.color)}`}>{scoreLabel(c.color)}</span>
                     <div className="score-bar">
                       <div className={`bg-${colorClass(c.color)}`} style={{ width: `${c.recommendation ?? 0}%` }} />
                     </div>
