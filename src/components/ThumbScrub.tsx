@@ -14,6 +14,7 @@ export default function ThumbScrub({ clip }: { clip: Clip }) {
   const [idx, setIdx] = useState(0);
   const [hover, setHover] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [broken, setBroken] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   // 호버 중(드래그 아닐 때) 자동 재생 — 프레임을 순환
@@ -54,13 +55,22 @@ export default function ThumbScrub({ clip }: { clip: Clip }) {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => { setHover(false); if (!dragging) setIdx(0); }}
     >
-      <img
-        className="thumb"
-        src={src}
-        alt=""
-        draggable={false}
-        onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")}
-      />
+      {broken ? (
+        <div className="thumb thumb-ph">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path d="M4 8h3l1.2-1.8h5.6L15 8h5v10H4z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+            <circle cx="12" cy="13" r="3" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          </svg>
+        </div>
+      ) : (
+        <img
+          className="thumb"
+          src={src}
+          alt=""
+          draggable={false}
+          onError={() => setBroken(true)}
+        />
+      )}
       {active && t != null && <span className="scrub-time">{fmtDuration(t)}</span>}
       {n > 1 && (
         <div
