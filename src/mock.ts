@@ -59,7 +59,8 @@ function seedClip(i: number): Clip {
     focus_score: [88, 72, 30, 85, 79][i % 5],
     audio_rms_dbfs: i % 3 !== 2 ? -22 : -99,
     relevance: [95, 76, 40, 83, 58][i % 5],
-    quality: [85, 70, 33, 78, 80][i % 5],
+    narrative: [82, 55, 20, 88, 45][i % 5],
+    warnings: [[], [], ["초점 나감"], [], []][i % 5],
     recommendation: rec,
     color,
   };

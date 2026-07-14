@@ -533,10 +533,12 @@ export default function ProjectHome() {
               <button className="secondary sm" disabled>수정</button>
             </div>
             <div className="weight-list">
-              <WeightRow label="기획안 키워드 연관성" pct={80} />
-              <WeightRow label="돌발 상황 감지" pct={100} />
-              <WeightRow label="오디오 품질" pct={40} />
+              <WeightRow label="연관성 (기획안 키워드)" pct={60} />
+              <WeightRow label="서사강도 (감정·사건)" pct={40} />
             </div>
+            <p className="ctx-desc muted" style={{ marginTop: 10 }}>
+              기술품질(초점·너무 짧음·화면 안 보임)은 점수에 넣지 않고 ⚠ 경고로 따로 표시해요.
+            </p>
           </div>
 
           {/* 추천 프로파일 (Pro · 목업) */}

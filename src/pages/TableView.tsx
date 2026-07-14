@@ -103,7 +103,14 @@ export default function TableView() {
                 <td onClick={(e) => e.stopPropagation()}>
                   <ThumbScrub clip={c} />
                 </td>
-                <td>{c.filename}</td>
+                <td>
+                  {c.filename}
+                  {(c.warnings ?? []).length > 0 && (
+                    <span className="warn-chip" style={{ marginLeft: 6 }} title={(c.warnings ?? []).join(", ")}>
+                      ⚠ {(c.warnings ?? []).length > 1 ? (c.warnings ?? []).length : ""}
+                    </span>
+                  )}
+                </td>
                 <td>{fmtDuration(c.duration_sec)}</td>
                 <td className="muted">{c.date || "—"}</td>
                 <td>{c.place || "—"}</td>

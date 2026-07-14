@@ -82,10 +82,22 @@ class Settings:
     embed_model: str = ""
     asr_model: str = ""
 
-    weight_relevance: float = 0.7
-    weight_quality: float = 0.3
+    # 추천지수 = weight_relevance×연관성 + weight_narrative×서사강도 (합=1).
+    # 기술품질(초점·음량 등)은 점수에 섞지 않고 경고로 별도 표시한다 (scoring.quality_warnings).
+    weight_relevance: float = 0.6
+    weight_narrative: float = 0.4
     threshold_green: int = 80
     threshold_yellow: int = 50
+
+    # 서사강도 내부 신호 가중치(합=1) — LLM 판단·움직임·얼굴존재를 어떻게 섞을지.
+    weight_llm_narrative: float = 0.6
+    weight_motion: float = 0.25
+    weight_face: float = 0.15
+
+    # 기술품질 경고 임계값 — 보수적으로(진짜 심각한 것만).
+    focus_warn: float = 15.0        # focus_score 미만이면 "초점 나감"
+    min_duration_warn: float = 1.0  # 초 미만이면 "너무 짧음"
+    blank_ratio_warn: float = 0.5   # 필름스트립의 이 비율 이상이 암전/과노출이면 "화면 거의 안 보임"
 
     keyframe_min: int = 1
     keyframe_max: int = 8
@@ -119,10 +131,16 @@ class Settings:
                                default="mlx-community/Qwen3-ASR-1.7B-8bit")
 
         # 추천도/전처리 파라미터 (파일 우선)
-        self.weight_relevance = float(_pick("WEIGHT_RELEVANCE", "scoring", "weight_relevance", default=0.7))
-        self.weight_quality = float(_pick("WEIGHT_QUALITY", "scoring", "weight_quality", default=0.3))
+        self.weight_relevance = float(_pick("WEIGHT_RELEVANCE", "scoring", "weight_relevance", default=0.6))
+        self.weight_narrative = float(_pick("WEIGHT_NARRATIVE", "scoring", "weight_narrative", default=0.4))
         self.threshold_green = int(_pick("THRESHOLD_GREEN", "scoring", "threshold_green", default=80))
         self.threshold_yellow = int(_pick("THRESHOLD_YELLOW", "scoring", "threshold_yellow", default=50))
+        self.weight_llm_narrative = float(_pick("WEIGHT_LLM_NARRATIVE", "scoring", "weight_llm_narrative", default=0.6))
+        self.weight_motion = float(_pick("WEIGHT_MOTION", "scoring", "weight_motion", default=0.25))
+        self.weight_face = float(_pick("WEIGHT_FACE", "scoring", "weight_face", default=0.15))
+        self.focus_warn = float(_pick("FOCUS_WARN", "scoring", "focus_warn", default=15.0))
+        self.min_duration_warn = float(_pick("MIN_DURATION_WARN", "scoring", "min_duration_warn", default=1.0))
+        self.blank_ratio_warn = float(_pick("BLANK_RATIO_WARN", "scoring", "blank_ratio_warn", default=0.5))
         self.silence_dbfs = float(_pick("SILENCE_DBFS", "preprocess", "silence_dbfs", default=-45.0))
         self.keyframe_min = int(_pick("KEYFRAME_MIN", "preprocess", "keyframe_min", default=1))
         self.keyframe_max = int(_pick("KEYFRAME_MAX", "preprocess", "keyframe_max", default=8))

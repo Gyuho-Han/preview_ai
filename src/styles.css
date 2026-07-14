@@ -527,6 +527,16 @@ tbody tr:last-child td { border-bottom: none; }
   background: var(--accent-soft); border: 1px solid rgba(109,124,255,0.3);
 }
 
+/* 기술품질 경고 — 추천지수와 무관, "쓸 수 있나"만 참고로 알려주는 딱지.
+   숨김이 아니라 참고이므로 항상 목록/상세에 그대로 노출한다. */
+.warn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.warn-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; color: var(--yellow);
+  background: var(--yellow-soft); border: 1px solid rgba(251,191,36,0.4);
+  border-radius: 999px; padding: 3px 10px;
+}
+
 /* ===================== 상태/빈 화면 ===================== */
 .empty {
   text-align: center; color: var(--muted); padding: 72px 0;

@@ -82,7 +82,8 @@ export interface Clip {
   focus_score?: number;
   audio_rms_dbfs?: number;
   relevance?: number;
-  quality?: number;
+  narrative?: number;
+  warnings?: string[];       // 기술품질 경고(초점 나감·너무 짧음·화면 거의 안 보임 등). 점수와 무관, 참고용.
   recommendation?: number;
   color?: ScoreColor;
 }

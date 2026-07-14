@@ -508,6 +508,7 @@ _LIST_FIELDS = (
     "id", "project_id", "filename", "status", "stage", "progress", "error",
     "duration_sec", "date", "place", "camera", "people", "one_line",
     "keywords", "recommendation", "color", "has_speech", "frame_times",
+    "warnings",
 )
 
 
@@ -540,22 +541,30 @@ def recompute_scores(pid: str) -> dict:
 
     plan_emb = _ensure_plan_embedding(pid)
     with _lock:
+        done = [
+            c for c in _clips.values()
+            if c["project_id"] == pid and c.get("status") == "done"
+        ]
+        # "narrative" 필드가 없는 클립은 이번 추천지수 개편 전(구버전)에 분석된 데이터다.
+        # 0.0으로 대체해 재계산하면 멀쩡했던 점수가 조용히 폭락하므로, 그런 클립은
+        # 건드리지 않고 그대로 둔다 — 다시 분석해야 새 공식으로 정확히 채점된다.
+        skipped_legacy = sum(1 for c in done if "narrative" not in c)
         snapshot = [
-            (cid, " ".join(
+            (c["id"], " ".join(
                 [c.get("transcript", "")]
                 + c.get("scene_descriptions", [])
                 + c.get("keywords", [])
-            ).strip(), c.get("quality", 0.0))
-            for cid, c in _clips.items()
-            if c["project_id"] == pid and c.get("status") == "done"
+            ).strip(), c["narrative"])
+            for c in done if "narrative" in c
         ]
 
     # 임베딩 계산(네트워크 호출)은 락 밖에서, 결과 반영은 락 안에서 일괄 적용
+    # (서사강도는 기획안과 무관해 재계산 없이 저장된 값을 그대로 재사용한다)
     results: list[tuple[str, float, int]] = []
-    for cid, clip_text, quality in snapshot:
+    for cid, clip_text, narrative in snapshot:
         relevance = (embed_mod.relevance_score(clip_text, plan_emb)
                      if plan_emb else 0.0)
-        results.append((cid, relevance, scoring.recommendation(relevance, quality)))
+        results.append((cid, relevance, scoring.recommendation(relevance, narrative)))
 
     with _lock:
         for cid, relevance, rec in results:
@@ -566,7 +575,7 @@ def recompute_scores(pid: str) -> dict:
             c["recommendation"] = rec
             c["color"] = scoring.color_for(rec)
     _persist()
-    return {"updated": len(results)}
+    return {"updated": len(results), "skipped_legacy": skipped_legacy}
 
 
 @app.get("/thumb/{cid}")

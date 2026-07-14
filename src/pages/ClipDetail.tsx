@@ -115,13 +115,23 @@ export default function ClipDetail() {
               <span>{clip.has_speech ? "🎙 음성 있음" : "🔇 음성 없음 (VLM 분석)"}</span>
             </div>
             <p style={{ marginTop: 14, fontSize: 15 }}>{clip.one_line}</p>
+            {(clip.warnings ?? []).length > 0 && (
+              <div className="warn-row" style={{ marginTop: 12 }}>
+                {(clip.warnings ?? []).map((w) => (
+                  <span key={w} className="warn-chip">⚠ {w}</span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="rec-box">
             <span className={`score-label c-${cc}`}>
               <span className={`dot bg-${cc}`} />{scoreLabel(clip.color)}
             </span>
             <DonutScore value={clip.recommendation ?? 0} cc={cc} />
-            <div className="rec-sub">연관성 {clip.relevance ?? 0} · 품질 {clip.quality ?? 0}</div>
+            <div className="rec-sub">
+              연관성 {clip.relevance ?? 0}
+              {clip.narrative != null && <> · 서사강도 {clip.narrative}</>}
+            </div>
           </div>
         </div>
       </div>

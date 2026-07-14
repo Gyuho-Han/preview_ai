@@ -10,7 +10,10 @@ pydantic>=2.7.4          # langchain 등과 호환되는 하한선
 python-multipart>=0.0.9
 
 # 영상 전처리
-opencv-python-headless>=4.10.0
+# 상한 <5 고정: 5.x부터 CascadeClassifier(얼굴검출, preprocess.py 서사강도 신호)가
+# 빠져 있어 서버가 뜨자마자 죽는다(2026.07 확인). 하한만 열어두면 신규 설치 때 5.x가
+# 잡혀 터지므로 반드시 상한을 유지할 것.
+opencv-python-headless>=4.10.0,<5
 numpy>=1.26,<2.0         # numba/mlx 호환 위해 1.x 유지
 
 # 기획안 PDF 파싱

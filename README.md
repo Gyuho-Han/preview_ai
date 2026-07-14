@@ -33,7 +33,7 @@ Rust 코어(`src-tauri/src/sidecar.rs`)가 앱 시작 시 Ollama 서버와 Pytho
 3. **STT** `stt.py` — 말소리 구간이 있을 때만 Qwen3-ASR(MLX, `Qwen3-ASR-1.7B-4bit`)로 **구간별로 잘라** 자막 생성(타임스탬프는 구간 시작 시각으로 보정 → 영상 기준 정확). 2차 방어선으로 후처리 필터: 중국어(한자) 덩어리 세그먼트 폐기·한글에 섞인 한자 런 제거(`_filter_chinese`), 단어·n-gram 반복 환각 폐기(`_is_degenerate`), 연속 중복 문장 축약(`_dedupe_segments`)
 4. **VLM** `vlm.py` — 키프레임마다 Qwen2.5-VL로 장면 설명 (음성 없는 B롤도 분석). 호출은 키프레임 수(1~8회)만큼만
 5. **융합** `llm.py` — Qwen3로 **자막(음성)+시각설명(VLM, 키프레임 시각 포함)+기획서 맥락**(주제·인물·장소·톤앤무드·키워드)을 종합 → 한줄요약·키워드·인물·장소·코멘트 (JSON). 장면 설명에 `[mm:ss]` 시각을 붙여 전달해 LLM이 클립의 **시간 흐름을 따라** 요약을 구성. 요약은 자막·장면의 실제 내용을 근거로 하고, 기획서 맥락은 이 클립이 기획 의도와 어떻게 맞닿는지 해석하는 참고로 사용(인물·장소는 기획서 표기와 대조). 타임스탬프별 장면 목록은 LLM이 아니라 **실제 키프레임 시각**(장면 검출 결과)으로 `analyzer.py`에서 구성 — 상세페이지 타임스탬프가 영상 전체에 걸쳐 정확
-6. **추천도** `embed.py` + `scoring.py` — `0.7×연관성(bge-m3 코사인) + 0.3×기술품질(초점+오디오)`
+6. **추천도** `embed.py` + `scoring.py` — `0.6×연관성(bge-m3 코사인) + 0.4×서사강도(LLM 감정판단+움직임+얼굴존재)`. 기술품질(초점·길이·화면밝기)은 점수에 안 섞고 `warnings` 경고 딱지로만 표시
    - 연관성은 코사인 유사도를 **실사용 범위 [0.30, 0.85] 기준으로 0~100에 선형 매핑**(과거 `(cos+1)/2` 방식은 무관한 클립도 65~80점이 나와 변별력이 없었음). 기존 클립은 P3의 "추천도 재계산"으로 갱신
    - 색상: 80%↑ 초록 / 50~79% 노랑 / 49%↓ 빨강
    - 가중치·임계값은 `config.py`에서 조정
@@ -84,10 +84,11 @@ embed = "bge-m3"
 asr   = "mlx-community/Qwen3-ASR-1.7B-4bit"   # 8bit(2.4GB)·0.6B-4bit(0.5GB)로 교체 가능
 
 [scoring]
-weight_relevance = 0.7
-weight_quality   = 0.3
+weight_relevance = 0.6
+weight_narrative = 0.4
 threshold_green  = 80
 threshold_yellow = 50
+# 서사강도 내부 신호 가중치, 기술품질 경고 임계값 등은 models.config 예시 참고
 
 [preprocess]
 scene_detect     = true   # false면 균등 간격 샘플링

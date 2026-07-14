@@ -4,7 +4,7 @@
        → Silero VAD 말소리 구간 → (있으면) Qwen3-ASR(MLX) 구간별 자막
        → Qwen2.5-VL 키프레임 장면 설명 (모든 영상)
        → Qwen3 융합: 자막(음성)+시각설명(타임스탬프)+기획서 맥락 → 프리뷰 노트
-       → bge-m3 임베딩 → 추천도(0.7×연관성 + 0.3×기술품질)
+       → bge-m3 임베딩 → 추천도(연관성×서사강도, 기술품질은 경고로 분리)
 """
 from __future__ import annotations
 
@@ -146,11 +146,22 @@ def analyze_video(video_path: str,
         if plan_embedding:
             relevance = embed.relevance_score(clip_text, plan_embedding)
         else:
-            relevance = 0.0  # 기획안 미업로드 시 연관성 0 (기술품질만 반영)
-        quality = scoring.quality_score(
-            pre.focus_score, pre.audio_rms_dbfs, pre.has_speech
-        )
-        rec = scoring.recommendation(relevance, quality)
+            relevance = 0.0  # 기획안 미업로드 시 연관성 0 (서사강도만 반영)
+        if "narrative_score" not in content:
+            import sys
+            print("[llm] narrative_score 없음(스키마 미준수) — 0으로 처리", file=sys.stderr)
+            llm_narrative = 0.0
+        else:
+            try:
+                llm_narrative = float(content["narrative_score"])
+            except (TypeError, ValueError):
+                import sys
+                print(f"[llm] narrative_score 형식 이상(값: {content['narrative_score']!r}) — 0으로 처리",
+                      file=sys.stderr)
+                llm_narrative = 0.0
+        narrative = scoring.narrative_score(llm_narrative, pre.motion_score, pre.face_score)
+        rec = scoring.recommendation(relevance, narrative)
+        warnings = scoring.quality_warnings(pre.focus_score, pre.duration_sec, pre.blank_ratio)
 
         _p("완료", 100)
 
@@ -203,7 +214,8 @@ def analyze_video(video_path: str,
             "focus_score": pre.focus_score,
             "audio_rms_dbfs": pre.audio_rms_dbfs,
             "relevance": relevance,
-            "quality": quality,
+            "narrative": narrative,
+            "warnings": warnings,
             "recommendation": rec,
             "color": scoring.color_for(rec),
         }

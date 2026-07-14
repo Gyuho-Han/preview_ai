@@ -16,7 +16,9 @@ import json
 import math
 import os
 import subprocess
+import sys
 import tempfile
+import threading
 from dataclasses import dataclass, field
 
 import cv2
@@ -40,6 +42,10 @@ class Preprocessed:
     strip_frames: list[str] = field(default_factory=list)  # 호버 스크럽용 저해상도 jpg
     strip_times: list[float] = field(default_factory=list)
     focus_score: float = 0.0        # 0~100 (라플라시안 분산 정규화)
+    # --- 서사강도(narrative) 신호 — 기존 디코드 결과를 재사용, 추가 디코드 없음 ---
+    face_score: float = 0.0         # 0~100, 얼굴이 검출된 키프레임 비율
+    motion_score: float = 0.0       # 0~100, 필름스트립 프레임간 평균 변화량 정규화
+    blank_ratio: float | None = 0.0  # 0~1(실측값) / None = 필름스트립을 아예 못 읽어 측정 불가
 
 
 # ---- 메타데이터 (ffprobe 1회) ----------------------------------------------
@@ -167,22 +173,34 @@ def _uniform_times(duration: float) -> list[float]:
     return [duration * (i + 0.5) / n for i in range(n)]
 
 
-def _detect_scene_times(strip_frames: list[str], strip_times: list[float],
-                        duration: float) -> list[float]:
-    """필름스트립 jpg들로 장면 전환을 검출해 각 장면의 대표 시각(중앙)을 반환.
+def _analyze_strip(strip_frames: list[str], strip_times: list[float],
+                   duration: float) -> tuple[list[float], float, float | None]:
+    """필름스트립 jpg들을 한 번만 디코드해 장면 전환 후보·움직임·화면밝기를 함께 계산한다.
+    (예전엔 장면검출과 움직임/밝기 판정이 같은 strip_frames를 각각 따로 디코드했다 — 통합해 1회로 줄임)
 
-    저해상도 HSV 히스토그램의 Bhattacharyya 거리로 컷을 찾는다. 이미 추출된
-    작은 이미지를 읽기만 하므로 영상 재디코드가 없다. 장면 수가 상한을 넘으면
-    균등 추려내고, 너무 적으면 균등 샘플링으로 폴백한다."""
-    if len(strip_frames) < 2:
-        return _uniform_times(duration)
+    - 장면 전환: 저해상도 HSV 히스토그램의 Bhattacharyya 거리로 컷을 찾는다.
+    - 움직임: 프레임간 그레이스케일 평균 변화량('거친 필터' 수준 — 정밀 광류 아님).
+    - 화면밝기: 프레임이 거의 새까맣거나(암전) 하얀지(과노출) 비율.
 
-    boundaries = [strip_times[0]]           # 장면 시작 시각들
+    반환: (장면 대표 시각 후보, motion_score 0~100, blank_ratio 0~1 또는 None).
+    blank_ratio는 프레임을 하나도 못 읽었을 때만 None(측정 불가)이고, 그 외엔 실측값(0 포함)
+    — "screen fully visible"과 "애초에 확인 못 함"을 구분해야 경고가 조용히 안 새기 때문."""
+    if not strip_frames:
+        return _uniform_times(duration), 0.0, None
+
+    boundaries = [strip_times[0]] if strip_times else []
+    diffs: list[float] = []
+    blank_count = 0
+    total = 0
     prev_hist = None
+    prev_gray = None
     for path, t in zip(strip_frames, strip_times):
         img = cv2.imread(path)
         if img is None:
             continue
+        total += 1
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
         cv2.normalize(hist, hist)
@@ -192,26 +210,84 @@ def _detect_scene_times(strip_frames: list[str], strip_times: list[float],
                 boundaries.append(t)
         prev_hist = hist
 
+        mean = float(np.mean(gray))
+        if mean < 8.0 or mean > 247.0:  # 거의 새까맣거나(암전) 하얀(과노출) 프레임
+            blank_count += 1
+
+        if prev_gray is not None and prev_gray.shape == gray.shape:
+            diffs.append(float(np.mean(cv2.absdiff(prev_gray, gray))))
+        prev_gray = gray
+
+    if total == 0:
+        return _uniform_times(duration), 0.0, None
+
     edges = boundaries + [duration]
     scene_mids = [(edges[i] + edges[i + 1]) / 2 for i in range(len(edges) - 1)]
     scene_mids = [t for t in scene_mids if 0 <= t <= duration]
-
     if len(scene_mids) < settings.keyframe_min:
-        return _uniform_times(duration)           # 장면이 거의 없으면 균등 폴백
-    if len(scene_mids) > settings.keyframe_max:    # 너무 많으면 균등 추려내기
+        scene_mids = _uniform_times(duration)          # 장면이 거의 없으면 균등 폴백
+    elif len(scene_mids) > settings.keyframe_max:       # 너무 많으면 균등 추려내기
         idxs = [round(i * (len(scene_mids) - 1) / (settings.keyframe_max - 1))
                 for i in range(settings.keyframe_max)]
         scene_mids = [scene_mids[i] for i in sorted(set(idxs))]
-    return scene_mids
+
+    blank_ratio = round(blank_count / total, 3)
+    motion = 0.0
+    if diffs:
+        avg_diff = float(np.mean(diffs))
+        # 경험적 스케일: 프레임간 평균 밝기차 20 이상이면 매우 역동적으로 취급
+        motion = round(max(0.0, min(100.0, avg_diff / 20.0 * 100.0)), 1)
+    return scene_mids, motion, blank_ratio
+
+
+# 얼굴 검출기(OpenCV 내장, 추가 다운로드 없음). 스레드별로 독립 인스턴스를 쓴다 —
+# CascadeClassifier.detectMultiScale은 같은 인스턴스를 여러 스레드가 동시에 호출하는
+# 걸 보장하지 않는데, 이 앱은 클립을 ThreadPoolExecutor로 동시 분석한다(config.concurrency).
+_face_cascade_local = threading.local()
+_face_cascade_warned = False
+
+
+def _face_cascade() -> cv2.CascadeClassifier | None:
+    """로드 실패(패키징 환경에 haarcascade 데이터가 없는 등) 시 클립 분석 전체를
+    죽이지 않고 None을 반환 — 호출부는 얼굴 신호만 빼고 진행한다. 경고는 1회만 로그."""
+    global _face_cascade_warned
+    casc = getattr(_face_cascade_local, "cascade", None)
+    if casc is not None:
+        return casc
+    try:
+        path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        casc = cv2.CascadeClassifier(path)
+        if casc.empty():
+            raise RuntimeError(f"빈 CascadeClassifier: {path}")
+    except Exception as e:  # noqa: BLE001 — 얼굴 신호는 없어도 되지만 로그는 남긴다
+        if not _face_cascade_warned:
+            print(f"[preprocess] 얼굴 검출기 로드 실패, 얼굴 신호 없이 진행: {e}", file=sys.stderr)
+            _face_cascade_warned = True
+        return None
+    _face_cascade_local.cascade = casc
+    return casc
+
+
+def _resize_for_face(gray: np.ndarray, target_width: int = 640) -> np.ndarray:
+    """얼굴검출은 '있다/없다' 수준의 거친 신호면 충분하므로, 4K 같은 원본 해상도 그대로
+    돌리지 않고 다운스케일해 비용을 줄인다(초점 판정용 라플라시안은 원본 그대로 유지)."""
+    h, w = gray.shape[:2]
+    if w <= target_width:
+        return gray
+    scale = target_width / w
+    return cv2.resize(gray, (target_width, max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
 
 
 def _grab_keyframes(video_path: str, times_sel: list[float], workdir: str
-                    ) -> tuple[list[str], list[float], float]:
-    """선택된 시각만 시크해 풀해상도 키프레임 저장 + 라플라시안 초점 점수."""
+                    ) -> tuple[list[str], list[float], float, float]:
+    """선택된 시각만 시크해 풀해상도 키프레임 저장 + 라플라시안 초점 점수 + 얼굴 존재 비율.
+    얼굴 검출은 이미 시크해 읽은 프레임(gray)을 그대로 재사용해 추가 디코드가 없다."""
     cap = cv2.VideoCapture(video_path)
     paths: list[str] = []
     times: list[float] = []
     focus_vals: list[float] = []
+    face_hits: list[int] = []
+    cascade = _face_cascade()
 
     for i, t in enumerate(times_sel):
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
@@ -224,6 +300,11 @@ def _grab_keyframes(video_path: str, times_sel: list[float], workdir: str
         times.append(round(t, 2))
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         focus_vals.append(cv2.Laplacian(gray, cv2.CV_64F).var())
+        if cascade is not None:
+            faces = cascade.detectMultiScale(
+                _resize_for_face(gray), scaleFactor=1.2, minNeighbors=5, minSize=(40, 40)
+            )
+            face_hits.append(1 if len(faces) > 0 else 0)
 
     cap.release()
 
@@ -233,7 +314,8 @@ def _grab_keyframes(video_path: str, times_sel: list[float], workdir: str
         focus = max(0.0, min(100.0, 100.0 * (1 - math.exp(-avg / 500.0))))
     else:
         focus = 0.0
-    return paths, times, round(focus, 1)
+    face_score = 100.0 * (sum(face_hits) / len(face_hits)) if face_hits else 0.0
+    return paths, times, round(focus, 1), round(face_score, 1)
 
 
 # ---- 메인 -------------------------------------------------------------------
@@ -259,7 +341,7 @@ def preprocess(video_path: str, workdir: str | None = None,
                 regions = found
                 has_speech = vad.total_speech(regions) >= settings.vad_min_total_speech
 
-    # 필름스트립(유일한 전체 디코드) → 장면검출 → 선택 시각만 풀해상도 시크
+    # 필름스트립(유일한 전체 디코드) → 장면검출 후보·움직임·화면밝기를 한 번에 계산
     strip_frames: list[str] = []
     strip_times: list[float] = []
     try:
@@ -270,15 +352,16 @@ def preprocess(video_path: str, workdir: str | None = None,
     except Exception:
         strip_frames, strip_times = [], []
 
-    if settings.scene_detect and strip_frames:
-        try:
-            times_sel = _detect_scene_times(strip_frames, strip_times, duration)
-        except Exception:
-            times_sel = _uniform_times(duration)
-    else:
-        times_sel = _uniform_times(duration)
+    try:
+        scene_mids, motion_score, blank_ratio = _analyze_strip(strip_frames, strip_times, duration)
+    except Exception:
+        scene_mids, motion_score, blank_ratio = _uniform_times(duration), 0.0, None
 
-    keyframes, times, focus = _grab_keyframes(video_path, times_sel, workdir)
+    # 장면검출을 켰고 필름스트립이 있을 때만 검출된 대표 시각을 쓴다(꺼져 있으면 균등 샘플링).
+    # motion_score/blank_ratio는 이 설정과 무관하게 필름스트립이 있는 한 항상 계산된다.
+    times_sel = scene_mids if (settings.scene_detect and strip_frames) else _uniform_times(duration)
+
+    keyframes, times, focus, face_score = _grab_keyframes(video_path, times_sel, workdir)
 
     return Preprocessed(
         duration_sec=round(duration, 2),
@@ -293,4 +376,7 @@ def preprocess(video_path: str, workdir: str | None = None,
         strip_frames=strip_frames,
         strip_times=strip_times,
         focus_score=focus,
+        face_score=face_score,
+        motion_score=motion_score,
+        blank_ratio=blank_ratio,
     )
