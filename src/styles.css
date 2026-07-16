@@ -906,8 +906,11 @@ tbody tr:last-child td { border-bottom: none; }
 .export-menu {
   position: absolute; bottom: 100%; right: 0; z-index: 10; margin-bottom: 4px;
   background: var(--panel); border: 1px solid var(--border-strong);
-  border-radius: 10px; box-shadow: var(--shadow-lg); overflow: hidden; white-space: nowrap;
+  border-radius: 10px; box-shadow: var(--shadow-lg); white-space: nowrap;
 }
+/* overflow:hidden 대신 첫/끝 항목에만 모서리 라운딩 — 옆으로 튀어나오는 서브메뉴가 잘리지 않게 */
+.export-item:first-child > button { border-radius: 9px 9px 0 0; }
+.export-item:last-child > button { border-radius: 0 0 9px 9px; }
 .export-item {
   position: relative;
 }
@@ -927,7 +930,7 @@ tbody tr:last-child td { border-bottom: none; }
   font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 .export-submenu {
-  position: absolute; top: 0; left: 100%; margin-left: 2px;
+  position: absolute; bottom: 0; right: 100%; margin-right: 2px;
   background: var(--panel); border: 1px solid var(--border-strong);
   border-radius: 8px; box-shadow: var(--shadow-lg); min-width: 160px; overflow: hidden;
 }

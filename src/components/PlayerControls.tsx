@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { fmtDuration } from "../util";
 import ExportMenu from "./ExportMenu";
+
+// 플레이어 타임코드 전용 포맷 — fmtDuration과 달리 0초도 "0:00"으로 표시
+function fmtT(sec: number): string {
+  const t = Math.max(0, Math.floor(sec));
+  const m = Math.floor(t / 60);
+  const s = t % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
 const icProps = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
 const IcScissors = () => <svg {...icProps}><circle cx="6" cy="6" r="3" /><circle cx="18" cy="18" r="3" /><path d="M9 9l6 6M9 15l6-6" /></svg>;
@@ -130,7 +137,7 @@ export default function PlayerControls({
         />
       </div>
 
-      <span className="control-tc">{fmtDuration(currentTime)} / {fmtDuration(duration)}</span>
+      <span className="control-tc">{fmtT(currentTime)} / {fmtT(duration)}</span>
 
       <button
         className={`control-btn ${selectionMode ? "active" : ""}`}
@@ -149,7 +156,7 @@ export default function PlayerControls({
               onClick={() => setMenuOpen(!menuOpen)}
               title="내보내기 옵션"
             >
-              {fmtDuration(Math.abs((selectionEnd ?? 0) - (selectionStart ?? 0)))}
+              {fmtT(Math.abs((selectionEnd ?? 0) - (selectionStart ?? 0)))}
               <span style={{ marginLeft: "4px" }}>내보내기▼</span>
             </button>
           )}

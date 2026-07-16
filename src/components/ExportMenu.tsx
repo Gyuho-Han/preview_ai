@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { fmtDuration } from "../util";
 
 const icProps = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
-const IcChevronRight = () => <svg {...icProps}><path d="M9 6l6 6-6 6" /></svg>;
+const IcChevronLeft = () => <svg {...icProps}><path d="M15 6l-6 6 6 6" /></svg>;
 
 export interface ExportMenuProps {
   open: boolean;
@@ -55,7 +55,7 @@ export default function ExportMenu({
           ) : (
             <>구간 내보내기</>
           )}
-          {hasSelection && <IcChevronRight />}
+          {hasSelection && <IcChevronLeft />}
         </button>
         {submenu === "selection" && hasSelection && (
           <div className="export-submenu">
@@ -86,7 +86,7 @@ export default function ExportMenu({
           onClick={() => setSubmenu(submenu === "full" ? null : "full")}
         >
           <span className="export-label">영상 전체 내보내기</span>
-          <IcChevronRight />
+          <IcChevronLeft />
         </button>
         {submenu === "full" && (
           <div className="export-submenu">
