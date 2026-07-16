@@ -99,6 +99,10 @@ class Settings:
     min_duration_warn: float = 1.0  # 초 미만이면 "너무 짧음"
     blank_ratio_warn: float = 0.5   # 필름스트립의 이 비율 이상이 암전/과노출이면 "화면 거의 안 보임"
 
+    # 수기 라벨(상/중/하) 개인화 학습을 켜는 데 필요한 프로젝트당 최소 라벨 수.
+    # 3클래스 × 클래스당 ~7개 = 3파라미터 모델(labeling.py)을 안전하게 학습할 하한.
+    label_train_min: int = 20
+
     keyframe_min: int = 1
     keyframe_max: int = 8
     keyframe_per_minute: float = 1.0
@@ -141,6 +145,7 @@ class Settings:
         self.focus_warn = float(_pick("FOCUS_WARN", "scoring", "focus_warn", default=15.0))
         self.min_duration_warn = float(_pick("MIN_DURATION_WARN", "scoring", "min_duration_warn", default=1.0))
         self.blank_ratio_warn = float(_pick("BLANK_RATIO_WARN", "scoring", "blank_ratio_warn", default=0.5))
+        self.label_train_min = int(_pick("LABEL_TRAIN_MIN", "scoring", "label_train_min", default=20))
         self.silence_dbfs = float(_pick("SILENCE_DBFS", "preprocess", "silence_dbfs", default=-45.0))
         self.keyframe_min = int(_pick("KEYFRAME_MIN", "preprocess", "keyframe_min", default=1))
         self.keyframe_max = int(_pick("KEYFRAME_MAX", "preprocess", "keyframe_max", default=8))
