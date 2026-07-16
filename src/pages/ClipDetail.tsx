@@ -3,8 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import type { Clip } from "../types";
-import { fmtTC, colorClass, scoreLabel } from "../util";
+import { colorClass, scoreLabel } from "../util";
 import { useLabels, toggleFavorite } from "../labels";
+import PlayerControls from "../components/PlayerControls";
 
 // 추천도 = 0.6×연관성 + 0.4×서사강도 (scoring.py / models.config)
 const W_RELEVANCE = 60;
@@ -12,49 +13,111 @@ const W_NARRATIVE = 40;
 
 type PreviewState = { ready: boolean; generating: boolean; error: string | null };
 
+interface PlayerBlockProps {
+  cid: string;
+  preview?: PreviewState;
+  videoRef: React.RefObject<HTMLVideoElement>;
+  compact?: boolean;
+  savedTimeRef: React.MutableRefObject<number>;
+  wasPlayingRef: React.MutableRefObject<boolean>;
+  durationSec?: number;
+  selectionMode: boolean;
+  selectionStart?: number;
+  selectionEnd?: number;
+  onSelectionChange: (start?: number, end?: number) => void;
+  onExport?: (type: "premiere" | "davinci" | "finalcut" | "file", range: "selection" | "full") => void;
+}
+
+// 메타 라인 아이콘 — 이모지 대신 프로그램 톤에 맞춘 단색 라인 아이콘(16px, currentColor)
+const icProps = { width: 13, height: 13, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
+const IcClock = () => <svg {...icProps}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>;
+const IcCalendar = () => <svg {...icProps}><rect x="3.5" y="5" width="17" height="16" rx="2" /><path d="M3.5 9.5h17M8 3v4M16 3v4" /></svg>;
+const IcPin = () => <svg {...icProps}><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.4" /></svg>;
+const IcCamera = () => <svg {...icProps}><path d="M4 8h3.2l1.3-2h6.9l1.3 2H20a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13.5" r="3.3" /></svg>;
+
 // 클립 플레이어 — 평소엔 왼쪽 컬럼에 크게, 도킹되면 오른쪽 컬럼 안에 작게(sticky).
 // 도킹 전환 시 <video> DOM이 통째로 옮겨가며 새로 마운트되므로, 재생 위치/상태를 ref에 저장해뒀다가 복원한다.
+// 사이드카 미연결/목 모드에서는 실제 영상을 디코딩하지 않는 가벼운 목업(CSS + rAF 진행)을 대신 보여주고,
+// 진행바는 실제 플레이어처럼 프레임 안쪽 하단에 오버레이로 두어 input[type=range]로 드래그 seek 가능하게 한다.
 function PlayerBlock({
-  cid, pid, preview, videoRef, fav, compact, savedTimeRef, wasPlayingRef,
-}: {
-  cid: string; pid: string; preview?: PreviewState;
-  videoRef: React.RefObject<HTMLVideoElement>; fav: boolean; compact?: boolean;
-  savedTimeRef: React.MutableRefObject<number>; wasPlayingRef: React.MutableRefObject<boolean>;
-}) {
+  cid, preview, videoRef, compact, savedTimeRef, wasPlayingRef, durationSec,
+  selectionMode, selectionStart, selectionEnd, onSelectionChange, onExport
+}: PlayerBlockProps) {
+  const total = durationSec ?? 0;
+  const [mockPlaying, setMockPlaying] = useState(false);
+  const [mockT, setMockT] = useState(0);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const showMock = !preview?.ready && !preview?.error;
+
+  // 클립이 바뀔 때마다 진행 상태 초기화
+  useEffect(() => {
+    setMockT(0);
+    setMockPlaying(false);
+  }, [cid]);
+
+  useEffect(() => {
+    if (!showMock || !mockPlaying || total <= 0) return;
+    const start = performance.now() - mockT * 1000;
+    let raf: number;
+    const tick = (now: number) => {
+      const next = (now - start) / 1000;
+      if (next >= total) { setMockT(total); setMockPlaying(false); return; }
+      setMockT(next);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showMock, mockPlaying, total]);
+
+  const currentTime = showMock ? mockT : (videoRef.current?.currentTime ?? 0);
+  const isPlaying = showMock ? mockPlaying : isVideoPlaying;
+
   return (
     <div className={`player-wrap ${compact ? "compact" : ""}`}>
       <div className="player-frame">
-        {preview?.ready ? (
+        {preview?.error ? (
+          <div className="player-ph">미리보기를 만들 수 없습니다: {(preview?.error || "").slice(0, 160)}</div>
+        ) : preview?.ready ? (
           <video
             ref={videoRef}
             className="clip-video"
             src={api.videoUrl(cid)}
-            controls
             preload="metadata"
             onTimeUpdate={(e) => { savedTimeRef.current = e.currentTarget.currentTime; }}
-            onPlay={() => { wasPlayingRef.current = true; }}
-            onPause={() => { wasPlayingRef.current = false; }}
+            onPlay={() => { wasPlayingRef.current = true; setIsVideoPlaying(true); }}
+            onPause={() => { wasPlayingRef.current = false; setIsVideoPlaying(false); }}
           />
-        ) : preview?.error ? (
-          <div className="player-ph">미리보기를 만들 수 없습니다: {(preview?.error || "").slice(0, 160)}</div>
         ) : (
-          <div className="player-ph"><span className="spinner" /> 미리보기 생성 중…</div>
+          <>
+            <div className="mock-player-stage" onClick={() => total > 0 && setMockPlaying((p) => !p)}>
+              <button className="mock-player-play" aria-label={mockPlaying ? "일시정지" : "재생"}>
+                {mockPlaying ? "❚❚" : "▶"}
+              </button>
+              {mockPlaying && <span className="mock-player-note mock-player-note-loop">AI 목업 미리보기 재생 중입니다</span>}
+            </div>
+          </>
         )}
+
+        {/* 새 공유 컨트롤바 */}
+        <PlayerControls
+          currentTime={currentTime}
+          duration={total}
+          isPlaying={isPlaying}
+          onTimeChange={(t) => {
+            if (showMock) { setMockT(t); } else { if (videoRef.current) videoRef.current.currentTime = t; }
+          }}
+          onPlayToggle={() => {
+            if (showMock) { setMockPlaying((p) => !p); } else { if (videoRef.current) videoRef.current.paused ? videoRef.current.play() : videoRef.current.pause(); }
+          }}
+          selectionMode={selectionMode}
+          onSelectionModeToggle={() => onSelectionChange(undefined, undefined)}
+          selectionStart={selectionStart}
+          selectionEnd={selectionEnd}
+          onSelectionChange={onSelectionChange}
+          onExport={onExport}
+        />
       </div>
-      {/* 클립 액션 — 찜(즉시 동작) · 구간선택/추출(편집 흐름). 도킹 시엔 공간 절약을 위해 생략 */}
-      {!compact && (
-        <div className="player-actions">
-          <button className={`pa-fav ${fav ? "on" : ""}`} onClick={() => toggleFavorite(pid, cid)}>
-            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
-              <path d="M12 20s-7-4.7-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.3-7 10-7 10z" fill={fav ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-            </svg>
-            {fav ? "찜함" : "찜하기"}
-          </button>
-          <span className="pa-spacer" />
-          <button className="secondary sm" disabled title="곧 제공됩니다">✂ 구간 선택</button>
-          <button className="secondary sm" disabled title="곧 제공됩니다">↗ 프리미어로 보내기</button>
-        </div>
-      )}
     </div>
   );
 }
@@ -93,7 +156,6 @@ function Breakdown({ clip }: { clip: Clip }) {
         <div className="rc-track"><div className="rc-fill b-nar" style={{ width: `${nar}%` }} /></div>
         <span className="rc-num">{nar}</span>
       </div>
-      <span className="rc-hint">근거 자세히 보기 →</span>
 
       <div className="rc-detail" role="tooltip">
         <div className="rcd-title">추천도 {rec}점, 이렇게 계산됐어요</div>
@@ -121,6 +183,9 @@ export default function ClipDetail() {
   const [siblings, setSiblings] = useState<Clip[]>([]);
   const [preview, setPreview] = useState<PreviewState>();
   const [docked, setDocked] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectionStart, setSelectionStart] = useState<number>();
+  const [selectionEnd, setSelectionEnd] = useState<number>();
   const videoRef = useRef<HTMLVideoElement>(null);
   const topbarRef = useRef<HTMLDivElement>(null);
   const titleTopRef = useRef<HTMLDivElement>(null); // 제목 맨 위 얇은 마커 — 이게 가려지기 '시작'하는 순간 바로 도킹
@@ -204,6 +269,11 @@ export default function ClipDetail() {
     api.listClips(pid).then((cs) => setSiblings(cs.filter((c) => c.status === "done"))).catch(() => {});
   }, [pid, cid]);
 
+  // 표에서 진입하든, 이전/다음으로 클립을 넘기든 상세페이지는 항상 맨 위에서 시작
+  useEffect(() => {
+    document.querySelector(".content")?.scrollTo(0, 0);
+  }, [cid]);
+
   // 미리보기(H.264 변환) 상태 폴링 — 준비되면 재생 가능
   useEffect(() => {
     let cancelled = false;
@@ -242,55 +312,62 @@ export default function ClipDetail() {
 
   return (
     <div className="clip-detail">
-      {/* 상단바 — 스크롤에 고정되는 유일한 요소 */}
+
+      {/* 상단바 — 스크롤에 고정되는 유일한 요소. 표로 돌아가기/이전·다음 사이 여유 공간에
+          파일명·영상개요를 넣어 압축적으로 활용(한 줄 고정, 넘치면 말줄임) */}
       <div className="clip-topbar" ref={topbarRef}>
-        <Link to={`/project/${pid}/table`} className="clip-back">‹ 표로 돌아가기</Link>
+        <Link to={`/project/${pid}/table`} className="clip-back" title="표로 돌아가기" aria-label="표로 돌아가기">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+            <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </Link>
+        <div className="clip-topbar-id">
+          <span className="clip-topbar-name">{clip.filename}</span>
+          <span className="clip-divider" />
+          <span className="clip-topbar-overview">{clip.one_line || "—"}</span>
+        </div>
         <div className="clip-nav">
+          <button className={`pa-fav sm ${fav ? "on" : ""}`} onClick={() => toggleFavorite(pid, cid)}>
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <path d="M12 20s-7-4.7-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.3-7 10-7 10z" fill={fav ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+            </svg>
+          </button>
           <button className="clip-navbtn" disabled={!prev} onClick={() => prev && nav(`/project/${pid}/clip/${prev.id}`)}>‹ 이전</button>
           <button className="clip-navbtn" disabled={!next} onClick={() => next && nav(`/project/${pid}/clip/${next.id}`)}>다음 ›</button>
         </div>
       </div>
 
-      {/* 헤더 — 스크롤하면 위로 사라짐(고정 안 함) */}
-      <header className="clip-head">
-        <div ref={titleTopRef} />
-        <h1 className="clip-title">{clip.filename}</h1>
-        <p className="clip-overview">{clip.one_line || "—"}</p>
-
-        <div className="clip-subrow">
-          <span className={`rec-flag c-${cc}`}><span className={`dot bg-${cc}`} />{scoreLabel(clip.color)} {clip.recommendation ?? 0}%</span>
-          <span className="clip-divider" />
-          <span className="meta-line">
-            <span className="mi"><span className="mi-ic">🕐</span>{fmtTC(clip.duration_sec)}</span>
-            <span className="mi"><span className="mi-ic">📅</span>{clip.date || "—"}</span>
-            <span className="mi strong"><span className="mi-ic">📍</span>{clip.place || "—"}</span>
-            <span className="mi"><span className="mi-ic">🎥</span>{clip.camera || "—"}</span>
-            {(clip.people ?? []).length > 0 && (
-              <span className="mi strong"><span className="mi-ic">👤</span>{(clip.people ?? []).join(", ")}</span>
-            )}
-            <span className="mi">{clip.has_speech ? "🎙 음성" : "🔇 무음"}</span>
-          </span>
-        </div>
-
-        {(clip.warnings ?? []).length > 0 && (
-          <div className="warn-row" style={{ marginTop: 10 }}>
-            {(clip.warnings ?? []).map((w) => <span key={w} className="warn-chip">⚠ {w}</span>)}
-          </div>
-        )}
-      </header>
-
-      {/* 2컬럼(하단) — 왼쪽: 플레이어 + 영상 내용 / 오른쪽: 요약·키워드·구성 */}
+      {/* 2컬럼(하단) — 왼쪽: 플레이어 + 영상 내용 / 오른쪽: 추천도·메타 · 요약 · 키워드 · 구성 */}
       <div className="detail-grid2">
         <div className="detail-main">
+          {/* 도킹 트리거 마커 — 플레이어 맨 위가 상단바 뒤로 가려지기 시작하는 순간 도킹 */}
+          <div ref={titleTopRef} />
           {/* 도킹 전엔 여기(왼쪽 상단)에 크게 표시. 도킹되면 오른쪽 컬럼으로 옮겨가며 이 자리는 비워 영상내용이 올라온다 */}
           {!docked && (
             <PlayerBlock
-              cid={cid} pid={pid} preview={preview} videoRef={videoRef} fav={fav}
+              cid={cid} preview={preview} videoRef={videoRef} durationSec={clip.duration_sec}
               savedTimeRef={savedTimeRef} wasPlayingRef={wasPlayingRef}
+              selectionMode={selectionMode} selectionStart={selectionStart} selectionEnd={selectionEnd}
+              onSelectionChange={(start, end) => {
+                if (start === undefined && end === undefined) {
+                  setSelectionMode(false);
+                  setSelectionStart(undefined);
+                  setSelectionEnd(undefined);
+                } else {
+                  setSelectionMode(true);
+                  setSelectionStart(start);
+                  setSelectionEnd(end);
+                }
+              }}
+              onExport={(type: "premiere" | "davinci" | "finalcut" | "file", range: "selection" | "full") => {
+                console.log("Export:", { type, range, selectionStart, selectionEnd });
+                // TODO: API 호출
+              }}
             />
           )}
 
-          {/* 영상 내용 (박스) — 읽히는 흐름, 타임스탬프는 앵커 */}
+          {/* 영상 내용 — 타임스탬프는 트랜스크립트 툴처럼 작은 캡션으로, 대화는 왼쪽 억센트 바로만
+              구분해 말풍선 없이도 눈에 띄게(설명 텍스트와 같은 톤 유지) */}
           <div className="card content-card">
             <div className="dash-head" style={{ marginBottom: 4 }}>
               <h2 style={{ margin: 0 }}>영상 내용</h2>
@@ -309,8 +386,8 @@ export default function ClipDetail() {
                     {s.desc && <span className="scene-desc">{s.desc}</span>}
                     {s.speech && (
                       !s.desc
-                        ? <span className="scene-quote"><span className="scene-quote-ic">🗣</span>{s.speech}</span>
-                        : <span className="scene-speech">“{s.speech}”</span>
+                        ? <span className="scene-quote">{s.speech}</span>
+                        : <span className="scene-speech">{s.speech}</span>
                     )}
                   </span>
                 </li>
@@ -319,9 +396,28 @@ export default function ClipDetail() {
           </div>
         </div>
 
-        {/* 오른쪽 — 영상요약(강조) · 키워드 · 추천도 구성(컴팩트+호버) */}
-        {/* 등장인물 섹션은 표페이지 컬럼 재설계와 묶어서 다음에 다룸 */}
+        {/* 오른쪽 — 추천도 · 메타정보(2줄 고정, 레이아웃 흔들림 방지) · 영상요약(강조) · 키워드(대상 포함) · 추천도 구성 */}
         <div className="detail-side">
+          <section className="ds-sec ds-meta">
+            <div className="clip-subrow">
+              <span className={`rec-flag c-${cc}`}><span className={`dot bg-${cc}`} />{scoreLabel(clip.color)} {clip.recommendation ?? 0}%</span>
+            </div>
+            {/* 항상 6칸(3+3) 그리드 — 값이 없어도 자리를 지켜 다른 클립으로 넘어갈 때 높이가 흔들리지 않는다 */}
+            <div className="meta-grid">
+              <span className="mi"><IcCalendar />{clip.date || "—"}</span>
+              <span className="mi strong"><IcPin />{clip.place || "—"}</span>
+              <span className="mi"><IcClock />{clip.shot_time || "—"}</span>
+              <span className="mi"><IcCamera />{clip.camera || "—"}</span>
+              <span className="mi">{clip.lens || "—"}</span>
+              <span className="mi">{[clip.resolution, clip.fps ? `${clip.fps}fps` : null].filter(Boolean).join(" · ") || "—"}</span>
+            </div>
+            {(clip.warnings ?? []).length > 0 && (
+              <div className="warn-row">
+                {(clip.warnings ?? []).map((w) => <span key={w} className="warn-chip">⚠ {w}</span>)}
+              </div>
+            )}
+          </section>
+
           <section className="ds-sec ds-hero">
             <h2 className="ds-hero-h">영상 요약</h2>
             <p className="ds-summary">{clip.summary || "—"}</p>
@@ -329,9 +425,12 @@ export default function ClipDetail() {
 
           <section className="ds-sec">
             <h2>핵심 키워드</h2>
-            <div>
-              {keywords.map((k) => <span key={k} className="tag">{k}</span>)}
-              {keywords.length === 0 && <span className="muted">—</span>}
+            <div className="kw-list">
+              {/* 표페이지 '대상' 개념(인물 우선, 없으면 사물·풍경)을 키워드 앞에 함께 노출. 중복은 제거, 최대 3개 */}
+              {Array.from(new Set([...((clip.people?.length ? clip.people : clip.subject ? [clip.subject] : [])), ...keywords])).slice(0, 3).map((k) => (
+                <span key={k} className="kw-hash">#{k}</span>
+              ))}
+              {!clip.people?.length && !clip.subject && keywords.length === 0 && <span className="muted">—</span>}
             </div>
           </section>
 
@@ -347,8 +446,24 @@ export default function ClipDetail() {
           {docked && (
             <div className="ds-sec ds-player-sec">
               <PlayerBlock
-                cid={cid} pid={pid} preview={preview} videoRef={videoRef} fav={fav} compact
+                cid={cid} preview={preview} videoRef={videoRef} compact durationSec={clip.duration_sec}
                 savedTimeRef={savedTimeRef} wasPlayingRef={wasPlayingRef}
+                selectionMode={selectionMode} selectionStart={selectionStart} selectionEnd={selectionEnd}
+                onSelectionChange={(start, end) => {
+                  if (start === undefined && end === undefined) {
+                    setSelectionMode(false);
+                    setSelectionStart(undefined);
+                    setSelectionEnd(undefined);
+                  } else {
+                    setSelectionMode(true);
+                    setSelectionStart(start);
+                    setSelectionEnd(end);
+                  }
+                }}
+                onExport={(type: "premiere" | "davinci" | "finalcut" | "file", range: "selection" | "full") => {
+                console.log("Export:", { type, range, selectionStart, selectionEnd });
+                // TODO: API 호출
+              }}
               />
             </div>
           )}
