@@ -4,10 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import type { Clip } from "../types";
 import { fmtTC, colorClass, scoreLabel } from "../util";
-import {
-  useLabels, toggleFavorite, toggleTag, toggleInFolder, addFolder,
-  TAG_COLORS, type ProjectLabels,
-} from "../labels";
+import { useLabels, toggleFavorite } from "../labels";
 
 // 추천도 = 0.6×연관성 + 0.4×서사강도 (scoring.py / models.config)
 const W_RELEVANCE = 60;
@@ -15,78 +12,49 @@ const W_NARRATIVE = 40;
 
 type PreviewState = { ready: boolean; generating: boolean; error: string | null };
 
-// 유저 분류 바 — 즐겨찾기 · 색 태그 · 폴더
-function LabelBar({ pid, cid, labels }: { pid: string; cid: string; labels: ProjectLabels }) {
-  const [folderOpen, setFolderOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const fav = labels.favorites.includes(cid);
-  const tags = labels.tags[cid] ?? [];
-  const inCount = labels.folders.filter((f) => f.clipIds.includes(cid)).length;
-
+// 클립 플레이어 — 평소엔 왼쪽 컬럼에 크게, 도킹되면 오른쪽 컬럼 안에 작게(sticky).
+// 도킹 전환 시 <video> DOM이 통째로 옮겨가며 새로 마운트되므로, 재생 위치/상태를 ref에 저장해뒀다가 복원한다.
+function PlayerBlock({
+  cid, pid, preview, videoRef, fav, compact, savedTimeRef, wasPlayingRef,
+}: {
+  cid: string; pid: string; preview?: PreviewState;
+  videoRef: React.RefObject<HTMLVideoElement>; fav: boolean; compact?: boolean;
+  savedTimeRef: React.MutableRefObject<number>; wasPlayingRef: React.MutableRefObject<boolean>;
+}) {
   return (
-    <div className="label-bar">
-      <button className={`lb-heart ${fav ? "on" : ""}`} onClick={() => toggleFavorite(pid, cid)}>
-        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-          <path d="M12 20s-7-4.7-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.3-7 10-7 10z" fill={fav ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-        </svg>
-        {fav ? "즐겨찾기됨" : "즐겨찾기"}
-      </button>
-
-      <span className="lb-divider" />
-
-      <div className="lb-colors">
-        {TAG_COLORS.map((c) => (
-          <button
-            key={c.id}
-            className={`lb-color ${tags.includes(c.id) ? "on" : ""}`}
-            style={{ background: c.hex }}
-            onClick={() => toggleTag(pid, cid, c.id)}
-            title={`${c.label} 태그`}
+    <div className={`player-wrap ${compact ? "compact" : ""}`}>
+      <div className="player-frame">
+        {preview?.ready ? (
+          <video
+            ref={videoRef}
+            className="clip-video"
+            src={api.videoUrl(cid)}
+            controls
+            preload="metadata"
+            onTimeUpdate={(e) => { savedTimeRef.current = e.currentTarget.currentTime; }}
+            onPlay={() => { wasPlayingRef.current = true; }}
+            onPause={() => { wasPlayingRef.current = false; }}
           />
-        ))}
-      </div>
-
-      <span className="lb-divider" />
-
-      <div className="lb-folder">
-        <button className="secondary sm" onClick={() => setFolderOpen((v) => !v)}>
-          📁 폴더{inCount > 0 ? ` (${inCount})` : ""}
-        </button>
-        {folderOpen && (
-          <>
-            <div className="tt-backdrop" onClick={() => setFolderOpen(false)} />
-            <div className="lb-folderpop">
-              {labels.folders.length === 0 && <p className="muted" style={{ fontSize: 12, margin: "0 0 8px" }}>아직 폴더가 없어요.</p>}
-              {labels.folders.map((f) => (
-                <label key={f.id} className="lb-folderitem">
-                  <input type="checkbox" checked={f.clipIds.includes(cid)} onChange={() => toggleInFolder(pid, f.id, cid)} />
-                  <span>{f.name}</span>
-                  <span className="muted" style={{ fontSize: 11, marginLeft: "auto" }}>{f.clipIds.length}</span>
-                </label>
-              ))}
-              <div className="lb-newfolder">
-                <input
-                  placeholder="새 폴더 이름"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && newName.trim()) {
-                      const id = addFolder(pid, newName.trim());
-                      toggleInFolder(pid, id, cid);
-                      setNewName("");
-                    }
-                  }}
-                />
-                <button
-                  className="sm"
-                  disabled={!newName.trim()}
-                  onClick={() => { const id = addFolder(pid, newName.trim()); toggleInFolder(pid, id, cid); setNewName(""); }}
-                >추가</button>
-              </div>
-            </div>
-          </>
+        ) : preview?.error ? (
+          <div className="player-ph">미리보기를 만들 수 없습니다: {(preview?.error || "").slice(0, 160)}</div>
+        ) : (
+          <div className="player-ph"><span className="spinner" /> 미리보기 생성 중…</div>
         )}
       </div>
+      {/* 클립 액션 — 찜(즉시 동작) · 구간선택/추출(편집 흐름). 도킹 시엔 공간 절약을 위해 생략 */}
+      {!compact && (
+        <div className="player-actions">
+          <button className={`pa-fav ${fav ? "on" : ""}`} onClick={() => toggleFavorite(pid, cid)}>
+            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+              <path d="M12 20s-7-4.7-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.3-7 10-7 10z" fill={fav ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+            </svg>
+            {fav ? "찜함" : "찜하기"}
+          </button>
+          <span className="pa-spacer" />
+          <button className="secondary sm" disabled title="곧 제공됩니다">✂ 구간 선택</button>
+          <button className="secondary sm" disabled title="곧 제공됩니다">↗ 프리미어로 보내기</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -99,37 +67,49 @@ function parseTs(t?: string): number {
   return parts.reduce((acc, p) => acc * 60 + p, 0);
 }
 
-// 추천도 구성 — 기둥별 가중치·점수 가로 막대
+// 추천도 구성 — 평소엔 두 줄 막대만(컴팩트), 호버하면 계산 근거를 상세 팝오버로
 function Breakdown({ clip }: { clip: Clip }) {
-  const cc = colorClass(clip.color);
   const rel = clip.relevance ?? 0;
   const nar = clip.narrative ?? 0;
-  const rows = [
-    { label: "연관성", sub: "기획안 키워드와의 일치", weight: W_RELEVANCE, score: rel, cls: "b-rel" },
-    { label: "서사강도", sub: "감정·사건·역동성", weight: W_NARRATIVE, score: nar, cls: "b-nar" },
-  ];
+  const rec = clip.recommendation ?? 0;
+  const relC = Math.round((rel * W_RELEVANCE) / 100 * 10) / 10;
+  const narC = Math.round((nar * W_NARRATIVE) / 100 * 10) / 10;
+  const kw = (clip.keywords ?? []).slice(0, 2).join("·");
+  const relWhy = rel >= 75 ? `기획안 키워드 ${kw ? `‘${kw}’와(과) ` : ""}강하게 맞아 높게 나왔어요`
+    : rel >= 50 ? "기획 방향과 부분적으로 맞아요"
+    : "기획안과의 접점이 약해 낮게 나왔어요";
+  const narWhy = nar >= 75 ? (clip.has_speech ? "대화와 감정 흐름이 뚜렷해요" : "움직임·구도가 역동적이에요")
+    : nar >= 50 ? "무난하지만 결정적 순간은 약한 편이에요"
+    : "사건·감정이 옅어 낮게 나왔어요";
   return (
-    <div className="breakdown">
-      {rows.map((r) => (
-        <div className="bd-row" key={r.label}>
-          <div className="bd-top">
-            <span className="bd-label">{r.label}</span>
-            <span className="bd-weight">가중치 {r.weight}%</span>
-            <span className="bd-score">{r.score}</span>
-          </div>
-          <div className="bd-track">
-            <div className={`bd-fill ${r.cls}`} style={{ width: `${r.score}%` }} />
-          </div>
-          <div className="bd-sub">{r.sub}</div>
-        </div>
-      ))}
-      <div className="bd-total">
-        <span>추천도</span>
-        <span className={`bd-total-num c-${cc}`}>{clip.recommendation ?? 0}<small>%</small></span>
+    <div className="rec-compact" tabIndex={0}>
+      <div className="rc-row">
+        <span className="rc-label">연관성</span>
+        <div className="rc-track"><div className="rc-fill b-rel" style={{ width: `${rel}%` }} /></div>
+        <span className="rc-num">{rel}</span>
       </div>
-      <p className="bd-note muted">
-        기술품질(초점·너무 짧음 등)은 점수에 넣지 않고 ⚠ 경고로만 알려요.
-      </p>
+      <div className="rc-row">
+        <span className="rc-label">서사강도</span>
+        <div className="rc-track"><div className="rc-fill b-nar" style={{ width: `${nar}%` }} /></div>
+        <span className="rc-num">{nar}</span>
+      </div>
+      <span className="rc-hint">근거 자세히 보기 →</span>
+
+      <div className="rc-detail" role="tooltip">
+        <div className="rcd-title">추천도 {rec}점, 이렇게 계산됐어요</div>
+        <div className="rcd-line">
+          <span className="rcd-name">연관성</span>
+          <span className="rcd-calc"><b>{rel}</b> × 60% = <b>{relC}</b></span>
+        </div>
+        <div className="rcd-desc">{relWhy}</div>
+        <div className="rcd-line">
+          <span className="rcd-name">서사강도</span>
+          <span className="rcd-calc"><b>{nar}</b> × 40% = <b>{narC}</b></span>
+        </div>
+        <div className="rcd-desc">{narWhy}</div>
+        <div className="rcd-total">{relC} + {narC} = <b>{rec}점</b></div>
+        <div className="rcd-note">기술품질(초점·너무 짧음 등)은 점수에 넣지 않고 ⚠ 경고로만 알려드려요.</div>
+      </div>
     </div>
   );
 }
@@ -140,8 +120,84 @@ export default function ClipDetail() {
   const [clip, setClip] = useState<Clip>();
   const [siblings, setSiblings] = useState<Clip[]>([]);
   const [preview, setPreview] = useState<PreviewState>();
+  const [docked, setDocked] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const topbarRef = useRef<HTMLDivElement>(null);
+  const titleTopRef = useRef<HTMLDivElement>(null); // 제목 맨 위 얇은 마커 — 이게 가려지기 '시작'하는 순간 바로 도킹
+  const savedTimeRef = useRef(0);
+  const wasPlayingRef = useRef(false);
+  const flipFromRef = useRef<DOMRect | null>(null); // 전환 직전 플레이어 위치(FLIP 시작점)
   const labels = useLabels(pid);
+
+  // 도킹 전환으로 <video>가 새로 마운트된 직후, 저장해둔 재생 위치/상태를 복원
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = savedTimeRef.current;
+    if (wasPlayingRef.current) v.play().catch(() => {});
+  }, [docked]);
+
+  // FLIP 전환 — 플레이어가 "사라졌다 나타나는" 게 아니라, 이전 자리에서 새 자리로
+  // 실제로 이동·축소되며 날아가게 한다(아이폰 PiP 느낌).
+  // 옵저버에서 기억해둔 시작 rect → 새로 마운트된 frame의 rect 차이를 역변환으로 깔고 풀어준다.
+  useEffect(() => {
+    const from = flipFromRef.current;
+    flipFromRef.current = null;
+    const frame = document.querySelector<HTMLElement>(".clip-detail .player-frame");
+    if (!from || !frame) return;
+    const to = frame.getBoundingClientRect();
+    const dx = from.left - to.left;
+    const dy = from.top - to.top;
+    const s = from.width / to.width;
+    if (Math.abs(dx) < 2 && Math.abs(dy) < 2 && Math.abs(s - 1) < 0.01) return;
+    frame.style.transformOrigin = "top left";
+    frame.style.transition = "none";
+    frame.style.transform = `translate(${dx}px, ${dy}px) scale(${s})`;
+    // 두 번의 rAF: 역변환이 확실히 그려진 다음 프레임에 트랜지션 시작
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        frame.style.transition = "transform .6s cubic-bezier(.22,1,.36,1)";
+        frame.style.transform = "";
+      });
+    });
+    const t = setTimeout(() => {
+      frame.style.transition = "";
+      frame.style.transformOrigin = "";
+    }, 700);
+    return () => clearTimeout(t);
+  }, [docked]);
+
+  // 상단바 높이 → 미니플레이어 sticky 오프셋 기준(CSS 변수)
+  useEffect(() => {
+    const el = topbarRef.current;
+    if (!el) return;
+    const update = () => document.documentElement.style.setProperty("--topbar-h", `${el.offsetHeight}px`);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [clip]);
+
+  // 제목 맨 위가 상단바 뒤로 가려지기 '시작'하는 순간 즉시 도킹.
+  // 헤더 전체가 아니라 얇은 마커 하나만 관찰해야, 헤더 일부가 아직 남아있어도(=완전히
+  // 사라지길 기다리지 않고) 살짝만 가려져도 바로 반응한다.
+  useEffect(() => {
+    const root = document.querySelector(".content");
+    const marker = titleTopRef.current;
+    if (!root || !marker) return;
+    const topbarH = topbarRef.current?.offsetHeight ?? 48;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        // 상태 바꾸기 직전, 지금 플레이어가 있는 자리를 FLIP 시작점으로 기억
+        const frame = document.querySelector<HTMLElement>(".clip-detail .player-frame");
+        if (frame) flipFromRef.current = frame.getBoundingClientRect();
+        setDocked(!entry.isIntersecting);
+      },
+      { root, rootMargin: `-${topbarH}px 0px 0px 0px`, threshold: 0 }
+    );
+    io.observe(marker);
+    return () => io.disconnect();
+  }, [clip]);
 
   useEffect(() => {
     api.getClip(cid).then(setClip).catch(() => {});
@@ -182,20 +238,22 @@ export default function ClipDetail() {
   const cc = colorClass(clip.color);
   const scenes = clip.scenes ?? [];
   const keywords = clip.keywords ?? [];
+  const fav = labels.favorites.includes(cid);
 
   return (
     <div className="clip-detail">
-      {/* 상단 바 */}
-      <div className="row spread clip-topbar">
-        <Link to={`/project/${pid}/table`} className="btn secondary sm">← 표로 돌아가기</Link>
-        <div className="row" style={{ gap: 8 }}>
-          <button className="secondary sm" disabled={!prev} onClick={() => prev && nav(`/project/${pid}/clip/${prev.id}`)}>← 이전</button>
-          <button className="secondary sm" disabled={!next} onClick={() => next && nav(`/project/${pid}/clip/${next.id}`)}>다음 →</button>
+      {/* 상단바 — 스크롤에 고정되는 유일한 요소 */}
+      <div className="clip-topbar" ref={topbarRef}>
+        <Link to={`/project/${pid}/table`} className="clip-back">‹ 표로 돌아가기</Link>
+        <div className="clip-nav">
+          <button className="clip-navbtn" disabled={!prev} onClick={() => prev && nav(`/project/${pid}/clip/${prev.id}`)}>‹ 이전</button>
+          <button className="clip-navbtn" disabled={!next} onClick={() => next && nav(`/project/${pid}/clip/${next.id}`)}>다음 ›</button>
         </div>
       </div>
 
-      {/* 얇은 헤더 — 제목 · 영상개요 · 추천 · 메타 */}
+      {/* 헤더 — 스크롤하면 위로 사라짐(고정 안 함) */}
       <header className="clip-head">
+        <div ref={titleTopRef} />
         <h1 className="clip-title">{clip.filename}</h1>
         <p className="clip-overview">{clip.one_line || "—"}</p>
 
@@ -221,27 +279,16 @@ export default function ClipDetail() {
         )}
       </header>
 
-      {/* 2컬럼 — 왼쪽: 플레이어 + 영상 내용 / 오른쪽: 요약·구성·키워드 */}
+      {/* 2컬럼(하단) — 왼쪽: 플레이어 + 영상 내용 / 오른쪽: 요약·키워드·구성 */}
       <div className="detail-grid2">
         <div className="detail-main">
-          {/* 영상 플레이어 (왼쪽 상단 고정 — 보면서 아래 내용 읽기) */}
-          <div className="player-wrap">
-            <div className="player-frame">
-              {preview?.ready ? (
-                <video ref={videoRef} className="clip-video" src={api.videoUrl(cid)} controls preload="metadata" />
-              ) : preview?.error ? (
-                <div className="player-ph">미리보기를 만들 수 없습니다: {(preview?.error || "").slice(0, 160)}</div>
-              ) : (
-                <div className="player-ph"><span className="spinner" /> 미리보기 생성 중… (최초 1회 코덱 변환)</div>
-              )}
-            </div>
-            <div className="player-actions">
-              <button className="secondary sm" disabled title="곧 제공됩니다">✂ 구간 선택</button>
-              <button className="secondary sm" disabled title="곧 제공됩니다">▶ 프리미어 추출</button>
-              <span className="soon-inline">곧 제공</span>
-            </div>
-            <LabelBar pid={pid} cid={cid} labels={labels} />
-          </div>
+          {/* 도킹 전엔 여기(왼쪽 상단)에 크게 표시. 도킹되면 오른쪽 컬럼으로 옮겨가며 이 자리는 비워 영상내용이 올라온다 */}
+          {!docked && (
+            <PlayerBlock
+              cid={cid} pid={pid} preview={preview} videoRef={videoRef} fav={fav}
+              savedTimeRef={savedTimeRef} wasPlayingRef={wasPlayingRef}
+            />
+          )}
 
           {/* 영상 내용 (박스) — 읽히는 흐름, 타임스탬프는 앵커 */}
           <div className="card content-card">
@@ -254,13 +301,17 @@ export default function ClipDetail() {
               {scenes.map((s, i) => (
                 <li
                   key={i}
-                  className={preview?.ready ? "scene-clickable" : ""}
+                  className={`${preview?.ready ? "scene-clickable" : ""} ${!s.desc && s.speech ? "scene-dialogue" : ""}`}
                   onClick={() => preview?.ready && seekTo(s.t ?? parseTs(s.time))}
                 >
                   <span className="scene-time">{s.time || "—"}</span>
                   <span className="scene-body">
-                    {s.desc}
-                    {s.speech && <span className="scene-speech">“{s.speech}”</span>}
+                    {s.desc && <span className="scene-desc">{s.desc}</span>}
+                    {s.speech && (
+                      !s.desc
+                        ? <span className="scene-quote"><span className="scene-quote-ic">🗣</span>{s.speech}</span>
+                        : <span className="scene-speech">“{s.speech}”</span>
+                    )}
                   </span>
                 </li>
               ))}
@@ -268,16 +319,12 @@ export default function ClipDetail() {
           </div>
         </div>
 
-        {/* 오른쪽 — 요약 · 추천도 구성 · 키워드 (선으로 바인딩) */}
+        {/* 오른쪽 — 영상요약(강조) · 키워드 · 추천도 구성(컴팩트+호버) */}
+        {/* 등장인물 섹션은 표페이지 컬럼 재설계와 묶어서 다음에 다룸 */}
         <div className="detail-side">
-          <section className="ds-sec">
-            <h2>영상 요약</h2>
-            <p style={{ margin: 0 }}>{clip.summary || "—"}</p>
-          </section>
-
-          <section className="ds-sec">
-            <h2>추천도 구성</h2>
-            <Breakdown clip={clip} />
+          <section className="ds-sec ds-hero">
+            <h2 className="ds-hero-h">영상 요약</h2>
+            <p className="ds-summary">{clip.summary || "—"}</p>
           </section>
 
           <section className="ds-sec">
@@ -287,6 +334,24 @@ export default function ClipDetail() {
               {keywords.length === 0 && <span className="muted">—</span>}
             </div>
           </section>
+
+          <section className="ds-sec">
+            <div className="ds-sec-head">
+              <h2>추천도 구성</h2>
+              <span className={`ds-score c-${cc}`}>{clip.recommendation ?? 0}점</span>
+            </div>
+            <Breakdown clip={clip} />
+          </section>
+
+          {/* 도킹되면 여기(오른쪽 컬럼 하단 빈 공간)에 작게 자리잡고, 스크롤해도 sticky로 따라옴 */}
+          {docked && (
+            <div className="ds-sec ds-player-sec">
+              <PlayerBlock
+                cid={cid} pid={pid} preview={preview} videoRef={videoRef} fav={fav} compact
+                savedTimeRef={savedTimeRef} wasPlayingRef={wasPlayingRef}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

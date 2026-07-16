@@ -81,23 +81,44 @@ const DEMO_SPECS: Spec[] = [
   { date: "2026-05-20", place: "부엌", camera: "DJI", people: [], one_line: "말끔히 정리된 빈 부엌을 담은 마무리 인서트", relevance: 50, narrative: 44, has_speech: false, keywords: ["인서트", "마무리"] },
 ];
 
-function makeScenes(spec: Spec): Scene[] {
-  const scenes: Scene[] = [
-    { time: "00:03", desc: "도입 — 장소와 상황 소개", t: 3 },
-  ];
-  if (spec.has_speech && spec.transcript) {
-    scenes.push({ time: "00:21", desc: "핵심 대화/행동", t: 21, speech: spec.transcript });
+function mmss(sec: number): string {
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+const REACTIONS = [
+  "응, 그러네… 여기 진짜 좋다.",
+  "그러게, 생각보다 훨씬 낫다.",
+  "우리 잘 온 것 같아.",
+  "이 순간 꼭 담아두자.",
+  "따뜻하다… 그치?",
+];
+
+// 데모 영상 내용 — 스탬프는 최소로. 음성 클립은 대사(자막) 흐름이 내용의 대부분이 되게 한다.
+function makeScenes(spec: Spec, dur: number): Scene[] {
+  const has = spec.has_speech && !!spec.transcript;
+  const subj = spec.people.length
+    ? spec.people.join("·")
+    : (spec.keywords?.find((k) => !["인서트", "드론", "B롤"].includes(k)) ?? "대상");
+  const at = (f: number) => Math.max(0, Math.round(dur * f));
+  const out: Scene[] = [];
+  out.push({ time: mmss(at(0.05)), t: at(0.05), desc: `${spec.place}에서 장면이 열리며 ${subj}을(를) 비춘다.` });
+  if (has) {
+    // desc 없이 speech만 있는 비트 = 대사 라인(자막처럼 주 콘텐츠로 표시)
+    out.push({ time: mmss(at(0.38)), t: at(0.38), desc: "", speech: spec.transcript });
+    out.push({ time: mmss(at(0.64)), t: at(0.64), desc: "", speech: REACTIONS[spec.one_line.length % REACTIONS.length] });
   } else {
-    scenes.push({ time: "00:18", desc: "핵심 장면 전개", t: 18 });
+    out.push({ time: mmss(at(0.45)), t: at(0.45), desc: `${spec.one_line}. 소리 없이 화면 구성만으로 전달되는 핵심 구간이다.` });
   }
-  scenes.push({ time: "00:34", desc: "마무리 — 다음 장면으로 연결", t: 34 });
-  return scenes;
+  out.push({ time: mmss(at(0.92)), t: at(0.92), desc: "여운을 남기며 다음 컷으로 자연스럽게 연결된다." });
+  return out;
 }
 
 let clipSeq = 0;
 function makeClip(spec: Spec, id: string, project_id: string): Clip {
   const { rec, color } = scoreOf(spec.relevance, spec.narrative);
   const n = ++clipSeq;
+  const dur = spec.dur ?? 24 + (n % 6) * 13;
   return {
     id,
     project_id,
@@ -106,14 +127,18 @@ function makeClip(spec: Spec, id: string, project_id: string): Clip {
     status: "done",
     stage: "완료",
     progress: 100,
-    duration_sec: spec.dur ?? 24 + (n % 6) * 13,
+    duration_sec: dur,
     date: spec.date,
     place: spec.place,
     camera: spec.camera,
     people: spec.people,
+    // 대상(Object): 인물이 있으면 인물, 없으면 이 컷의 주된 사물·풍경(일반 키워드 제외)
+    subject: spec.people.length
+      ? spec.people.join(", ")
+      : (spec.keywords?.find((k) => !["인서트", "드론", "B롤"].includes(k)) ?? "장면"),
     one_line: spec.one_line,
     summary: `${spec.one_line}. 자막과 키프레임 시각 설명을 융합해 생성된 요약이 여기에 표시됩니다. ${spec.has_speech ? "대화가 있어 맥락 파악이 쉬운 편입니다." : "음성이 없어 화면 설명(VLM) 기반으로 분석했습니다."}`,
-    scenes: makeScenes(spec),
+    scenes: makeScenes(spec, dur),
     keywords: spec.keywords ?? ["가족", "일상"],
     ai_comment:
       color === "green"

@@ -70,6 +70,7 @@ export interface Clip {
   place?: string;
   camera?: string;
   people?: string[];
+  subject?: string;        // 대상(Object) — 이 컷의 주인공: 인물이면 인물, 아니면 사물·풍경 등
   one_line?: string;
   summary?: string;
   scenes?: Scene[];

@@ -7,16 +7,48 @@ import {
   fmtTC, colorClass, scoreLabel, fmtDateLabel,
   personColor, cameraColor, initialOf,
 } from "../util";
-import { useLabels, toggleFavorite, TAG_COLORS, colorHex, type LabelColor } from "../labels";
+import { useLabels, toggleFavorite } from "../labels";
 import ThumbScrub from "../components/ThumbScrub";
 
 type ViewMode = "date" | "flat";
 
-// 즐겨찾기 하트
+// 토스 스타일 필터 — pill 버튼 + 팝오버 단일 선택 리스트 (네이티브 select 대체)
+// value가 "전체"에 해당하는 값(빈 문자열 등)이면 활성 표시를 하지 않는다.
+function FilterPill<T extends string | number>({
+  label, value, allValue, options, onChange,
+}: {
+  label: string; value: T; allValue: T;
+  options: { value: T; text: string }[]; onChange: (v: T) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const isAll = value === allValue;
+  const current = options.find((o) => o.value === value)?.text;
+  return (
+    <div className="tt-pillwrap">
+      <button className={`tt-pill ${!isAll ? "on" : ""}`} onClick={() => setOpen((v) => !v)}>
+        {isAll ? label : current}
+        <svg viewBox="0 0 12 8" width="10" height="7" aria-hidden="true"><path d="M6 8 0 0h12z" fill="currentColor" /></svg>
+      </button>
+      {open && (
+        <>
+          <div className="tt-backdrop" onClick={() => setOpen(false)} />
+          <div className="tt-plist">
+            <button className={isAll ? "on" : ""} onClick={() => { onChange(allValue); setOpen(false); }}>{label} 전체</button>
+            {options.map((o) => (
+              <button key={String(o.value)} className={value === o.value ? "on" : ""} onClick={() => { onChange(o.value); setOpen(false); }}>{o.text}</button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// 즐겨찾기 하트 — 전용 컬럼에 항상 노출(호버 불필요)
 function Heart({ on, onClick }: { on: boolean; onClick: (e: React.MouseEvent) => void }) {
   return (
-    <button className={`heart ${on ? "on" : ""}`} onClick={onClick} title={on ? "즐겨찾기 해제" : "즐겨찾기"}>
-      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+    <button className={`heart-col ${on ? "on" : ""}`} onClick={onClick} title={on ? "찜 해제" : "찜하기"}>
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
         <path d="M12 20s-7-4.7-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.3-7 10-7 10z"
           fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
       </svg>
@@ -24,31 +56,30 @@ function Heart({ on, onClick }: { on: boolean; onClick: (e: React.MouseEvent) =>
   );
 }
 
-// 색 태그 점들
-function TagDots({ tags }: { tags?: LabelColor[] }) {
-  if (!tags || tags.length === 0) return null;
+// 대상(Object) — 인물이면 아바타 클러스터 + 이름(한 번만), 아니면 사물·풍경 라벨
+function Subject({ clip }: { clip: Clip }) {
+  const people = clip.people ?? [];
+  if (people.length > 0) {
+    return (
+      <div className="subject-cell" title={people.join(", ")}>
+        <span className="av-cluster">
+          {people.slice(0, 3).map((p) => {
+            const { bg, fg } = personColor(p);
+            return <span className="person-av" key={p} style={{ background: bg, color: fg }}>{initialOf(p)}</span>;
+          })}
+        </span>
+        <span className="subject-name">{people.join(", ")}</span>
+      </div>
+    );
+  }
+  if (!clip.subject) return <span className="muted">—</span>;
   return (
-    <span className="tag-dots">
-      {tags.map((c) => <i key={c} style={{ background: colorHex(c) }} />)}
+    <span className="subject-cell obj" title={clip.subject}>
+      <span className="subject-ic" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="13" height="13"><path d="M4 17l5-6 3.5 4 2.5-3 5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><circle cx="8" cy="8" r="1.8" fill="currentColor" /></svg>
+      </span>
+      {clip.subject}
     </span>
-  );
-}
-
-// 등장인물 — 노션 유저 스타일 원형 아바타 + 이름
-function People({ people }: { people?: string[] }) {
-  if (!people || people.length === 0) return <span className="muted">—</span>;
-  return (
-    <div className="people-cell">
-      {people.map((p) => {
-        const { bg, fg } = personColor(p);
-        return (
-          <span className="person" key={p} title={p}>
-            <span className="person-av" style={{ background: bg, color: fg }}>{initialOf(p)}</span>
-            <span className="person-name">{p}</span>
-          </span>
-        );
-      })}
-    </div>
   );
 }
 
@@ -91,7 +122,7 @@ function Warn({ clip }: { clip: Clip }) {
   );
 }
 
-const COLS = 7; // 썸네일·파일명·추천도·영상개요·등장인물·카메라·TC (장소는 병합 셀로 별도)
+const COLS = 8; // 썸네일·파일명·추천도·영상개요·대상·카메라·TC·즐겨찾기 (장소는 병합 셀로 별도)
 const PAGE_SIZE = 60;
 
 export default function TableView() {
@@ -108,7 +139,6 @@ export default function TableView() {
   const [fTo, setFTo] = useState("");
   const [dateOpen, setDateOpen] = useState(false);
   const [favOnly, setFavOnly] = useState(false);
-  const [fColor, setFColor] = useState<LabelColor | "">("");
   const [view, setView] = useState<ViewMode>("date");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
@@ -128,8 +158,8 @@ export default function TableView() {
     return () => clearInterval(t);
   }, [clips, refresh]);
 
-  const places = useMemo(() => [...new Set(clips.map((c) => c.place).filter(Boolean))], [clips]);
-  const cameras = useMemo(() => [...new Set(clips.map((c) => c.camera).filter(Boolean))], [clips]);
+  const places = useMemo(() => [...new Set(clips.map((c) => c.place).filter((x): x is string => Boolean(x)))], [clips]);
+  const cameras = useMemo(() => [...new Set(clips.map((c) => c.camera).filter((x): x is string => Boolean(x)))], [clips]);
   // 촬영 기간(달력 범위 min/max)
   const dateRange = useMemo(() => {
     const ds = clips.map((c) => c.date).filter(Boolean).sort() as string[];
@@ -146,7 +176,6 @@ export default function TableView() {
       .filter((c) => !fFrom || (c.date ?? "") >= fFrom)
       .filter((c) => !fTo || (c.date ?? "") <= fTo)
       .filter((c) => !favOnly || favSet.has(c.id))
-      .filter((c) => !fColor || (labels.tags[c.id] ?? []).includes(fColor))
       .filter((c) => {
         if (!needle) return true;
         const hay = [
@@ -159,10 +188,10 @@ export default function TableView() {
         const d = (a.date ?? "").localeCompare(b.date ?? "");
         return d !== 0 ? d : a.filename.localeCompare(b.filename);
       });
-  }, [clips, q, fPlace, fCamera, fMinScore, fFrom, fTo, favOnly, fColor, favSet, labels.tags]);
+  }, [clips, q, fPlace, fCamera, fMinScore, fFrom, fTo, favOnly, favSet]);
 
   // 필터가 바뀌면 첫 페이지로
-  useEffect(() => { setPage(1); }, [q, fPlace, fCamera, fMinScore, fFrom, fTo, favOnly, fColor, view]);
+  useEffect(() => { setPage(1); }, [q, fPlace, fCamera, fMinScore, fFrom, fTo, favOnly, view]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageSafe = Math.min(page, totalPages);
@@ -183,12 +212,31 @@ export default function TableView() {
   }, [pageItems]);
 
   const analyzing = clips.filter((c) => c.status === "queued").length;
-  const hasFilter = q || fPlace || fCamera || fMinScore > 0 || fFrom || fTo || favOnly || fColor;
+  const hasFilter = q || fPlace || fCamera || fMinScore > 0 || fFrom || fTo || favOnly;
 
   function resetFilters() {
     setQ(""); setFPlace(""); setFCamera(""); setFMinScore(0); setFFrom(""); setFTo("");
-    setFavOnly(false); setFColor("");
+    setFavOnly(false);
   }
+
+  // 페이지 이동 시 표 상단으로 스크롤 복귀(맨 밑에서 눌러도 다음 페이지 헤더부터 보이게)
+  function goPage(n: number) {
+    setPage(n);
+    document.querySelector(".content")?.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // 페이지 번호 목록 — 앞/뒤 2개 + 현재 주변, 나머지는 "…"로 축약
+  const pageNums = useMemo(() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    const nums = new Set([1, 2, totalPages - 1, totalPages, pageSafe - 1, pageSafe, pageSafe + 1]);
+    const sorted = [...nums].filter((n) => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+    const out: (number | "…")[] = [];
+    sorted.forEach((n, i) => {
+      if (i > 0 && n - (sorted[i - 1] as number) > 1) out.push("…");
+      out.push(n);
+    });
+    return out;
+  }, [totalPages, pageSafe]);
 
   function toggleDate(date: string) {
     setCollapsed((prev) => {
@@ -212,28 +260,25 @@ export default function TableView() {
     return { start, len };
   }
 
-  const thumbCell = (c: Clip) => (
-    <td className="thumb-td" onClick={(e) => e.stopPropagation()}>
-      <div className="thumb-wrap">
-        <ThumbScrub clip={c} />
-        <Heart on={favSet.has(c.id)} onClick={(e) => { e.stopPropagation(); toggleFavorite(pid, c.id); }} />
-      </div>
+  const favCell = (c: Clip) => (
+    <td className="fav-td" onClick={(e) => e.stopPropagation()}>
+      <Heart on={favSet.has(c.id)} onClick={(e) => { e.stopPropagation(); toggleFavorite(pid, c.id); }} />
     </td>
   );
 
   const rowFor = (c: Clip) => (
     <>
-      {thumbCell(c)}
+      <td onClick={(e) => e.stopPropagation()}><ThumbScrub clip={c} /></td>
       <td className="cell-file">{c.filename}</td>
       <td><Score clip={c} /></td>
       <td className="cell-summary">
         {c.one_line || "—"}
-        <TagDots tags={labels.tags[c.id]} />
         <Warn clip={c} />
       </td>
-      <td><People people={c.people} /></td>
+      <td><Subject clip={c} /></td>
       <td><Camera camera={c.camera} /></td>
       <td className="muted cell-tc">{fmtTC(c.duration_sec)}</td>
+      {favCell(c)}
     </>
   );
 
@@ -293,36 +338,27 @@ export default function TableView() {
           )}
         </div>
 
-        <select value={fPlace} onChange={(e) => setFPlace(e.target.value)}>
-          <option value="">장소 전체</option>
-          {places.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <select value={fCamera} onChange={(e) => setFCamera(e.target.value)}>
-          <option value="">카메라 전체</option>
-          {cameras.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select value={fMinScore} onChange={(e) => setFMinScore(Number(e.target.value))}>
-          <option value={0}>추천도 전체</option>
-          <option value={80}>추천 (80%+)</option>
-          <option value={50}>보통 이상 (50%+)</option>
-        </select>
+        <FilterPill
+          label="장소" value={fPlace} allValue=""
+          options={places.map((p) => ({ value: p, text: p }))}
+          onChange={setFPlace}
+        />
+        <FilterPill
+          label="카메라" value={fCamera} allValue=""
+          options={cameras.map((c) => ({ value: c, text: c }))}
+          onChange={setFCamera}
+        />
+        <FilterPill
+          label="추천도" value={fMinScore} allValue={0}
+          options={[{ value: 50, text: "보통 이상" }, { value: 80, text: "추천" }]}
+          onChange={setFMinScore}
+        />
 
-        <button className={`tt-fav ${favOnly ? "on" : ""}`} onClick={() => setFavOnly((v) => !v)} title="즐겨찾기만 보기">
+        <button className={`tt-fav ${favOnly ? "on" : ""}`} onClick={() => setFavOnly((v) => !v)} title="찜한 것만 보기">
           <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
             <path d="M12 20s-7-4.7-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.3-7 10-7 10z" fill={favOnly ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
           </svg>
         </button>
-        <div className="tt-colors" role="group" aria-label="색 태그 필터">
-          {TAG_COLORS.map((c) => (
-            <button
-              key={c.id}
-              className={`tt-color ${fColor === c.id ? "on" : ""}`}
-              style={{ background: c.hex }}
-              onClick={() => setFColor(fColor === c.id ? "" : c.id)}
-              title={`${c.label} 태그`}
-            />
-          ))}
-        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -337,7 +373,8 @@ export default function TableView() {
             <tr>
               <th className="th-place">장소</th>
               <th>썸네일</th><th>파일명</th><th>추천도</th><th>영상개요</th>
-              <th>등장인물</th><th>카메라</th><th>TC</th>
+              <th>대상</th><th>카메라</th><th>TC</th>
+              <th className="th-fav">찜</th>
             </tr>
           </thead>
           {groups.map((g) => {
@@ -379,21 +416,23 @@ export default function TableView() {
           <thead>
             <tr>
               <th>썸네일</th><th>파일명</th><th>추천도</th><th>영상개요</th>
-              <th>장소</th><th>등장인물</th><th>카메라</th><th>날짜</th><th>TC</th>
+              <th>장소</th><th>대상</th><th>카메라</th><th>날짜</th><th>TC</th>
+              <th className="th-fav">찜</th>
             </tr>
           </thead>
           <tbody>
             {pageItems.map((c) => (
               <tr key={c.id} className="clip-row" onClick={() => nav(`/project/${pid}/clip/${c.id}`)}>
-                {thumbCell(c)}
+                <td onClick={(e) => e.stopPropagation()}><ThumbScrub clip={c} /></td>
                 <td className="cell-file">{c.filename}</td>
                 <td><Score clip={c} /></td>
-                <td className="cell-summary">{c.one_line || "—"}<TagDots tags={labels.tags[c.id]} /><Warn clip={c} /></td>
+                <td className="cell-summary">{c.one_line || "—"}<Warn clip={c} /></td>
                 <td>{c.place || "—"}</td>
-                <td><People people={c.people} /></td>
+                <td><Subject clip={c} /></td>
                 <td><Camera camera={c.camera} /></td>
                 <td className="muted">{fmtDateLabel(c.date).md}</td>
                 <td className="muted cell-tc">{fmtTC(c.duration_sec)}</td>
+                {favCell(c)}
               </tr>
             ))}
           </tbody>
@@ -402,9 +441,21 @@ export default function TableView() {
 
       {totalPages > 1 && (
         <div className="pagination">
-          <button className="secondary sm" disabled={pageSafe <= 1} onClick={() => setPage(pageSafe - 1)}>이전</button>
-          <span>{pageSafe} / {totalPages}</span>
-          <button className="secondary sm" disabled={pageSafe >= totalPages} onClick={() => setPage(pageSafe + 1)}>다음</button>
+          <button className="secondary sm" disabled={pageSafe <= 1} onClick={() => goPage(pageSafe - 1)}>← 이전</button>
+          <span className="pg-range">
+            {(pageSafe - 1) * PAGE_SIZE + 1}–{Math.min(pageSafe * PAGE_SIZE, filtered.length)}
+            <span className="muted"> / {filtered.length}개</span>
+          </span>
+          <div className="pg-nums">
+            {pageNums.map((n, i) =>
+              n === "…" ? (
+                <span key={`e${i}`} className="pg-ellipsis">…</span>
+              ) : (
+                <button key={n} className={`pg-num ${n === pageSafe ? "on" : ""}`} onClick={() => goPage(n as number)}>{n}</button>
+              )
+            )}
+          </div>
+          <button className="secondary sm" disabled={pageSafe >= totalPages} onClick={() => goPage(pageSafe + 1)}>다음 →</button>
         </div>
       )}
 
