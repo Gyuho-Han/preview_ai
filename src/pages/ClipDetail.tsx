@@ -2,8 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
-import type { Clip } from "../types";
-import { colorClass, scoreLabel } from "../util";
+import type { Clip, TierLabel } from "../types";
+import { colorClass, scoreLabel, TIERS, tierText, tierClass } from "../util";
 import { useLabels, toggleFavorite } from "../labels";
 import PlayerControls from "../components/PlayerControls";
 
@@ -294,6 +294,14 @@ export default function ClipDetail() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [cid]);
 
+  // 분류(상/중/하) 저장 — 낙관적 반영 후 재조회(20개째엔 AI 제안이 붙어 돌아온다)
+  function setLabel(label: TierLabel | null) {
+    setClip((c) => c && { ...c, user_label: label ?? undefined, ai_label: label ? undefined : c.ai_label });
+    api.setClipLabel(cid, label)
+      .then(() => api.getClip(cid).then(setClip))
+      .catch(() => {});
+  }
+
   function seekTo(sec: number) {
     const v = videoRef.current;
     if (!v || !preview?.ready) return;
@@ -400,6 +408,29 @@ export default function ClipDetail() {
         <div className="detail-side">
           <section className="ds-sec ds-meta">
             <div className="clip-subrow">
+              {/* 분류(상/중/하) — 판단은 사람이. AI 점수(rec-flag)는 근거로 옆에 병치 */}
+              <span className="tier-cell" title={`AI 점수 ${clip.recommendation ?? 0} · ${scoreLabel(clip.color)}`}>
+                {clip.user_label ? (
+                  <button
+                    className={`tier-badge solid t-${tierClass(clip.user_label)}`}
+                    onClick={() => setLabel(null)}
+                    title="내가 분류함 — 클릭하면 해제"
+                  >
+                    {tierText(clip.user_label)}
+                  </button>
+                ) : (
+                  TIERS.map((t) => (
+                    <button
+                      key={t}
+                      className={`tier-badge ${clip.ai_label === t ? "ai" : "ghost"} t-${tierClass(t)}`}
+                      onClick={() => setLabel(t)}
+                      title={clip.ai_label === t ? "AI 제안 — 클릭해 확정" : `${tierText(t)}(으)로 분류`}
+                    >
+                      {clip.ai_label === t ? `AI ${tierText(t)}` : tierText(t)}
+                    </button>
+                  ))
+                )}
+              </span>
               <span className={`rec-flag c-${cc}`}><span className={`dot bg-${cc}`} />{scoreLabel(clip.color)} {clip.recommendation ?? 0}%</span>
             </div>
             {/* 항상 6칸(3+3) 그리드 — 값이 없어도 자리를 지켜 다른 클립으로 넘어갈 때 높이가 흔들리지 않는다 */}

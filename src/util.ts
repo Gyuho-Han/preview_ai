@@ -1,3 +1,5 @@
+import type { Clip, TierLabel } from "./types";
+
 export function fmtDuration(sec?: number): string {
   if (!sec) return "—";
   const m = Math.floor(sec / 60);
@@ -24,6 +26,28 @@ export function colorClass(color?: string): string {
 export function scoreLabel(color?: string): string {
   const cc = colorClass(color);
   return cc === "rec" ? "추천" : cc === "ok" ? "보통" : "낮음";
+}
+
+// ---- 수기 분류(상/중/하) ----------------------------------------------------
+
+export const TIERS: TierLabel[] = ["high", "mid", "low"];
+
+export function tierText(l: TierLabel): string {
+  return l === "high" ? "상" : l === "mid" ? "중" : "하";
+}
+
+// 티어 색은 추천도 색 토큰(rec/ok/low)을 그대로 재사용 — 상=로열블루, 중=앰버, 하=회색
+export function tierClass(l: TierLabel): string {
+  return l === "high" ? "rec" : l === "mid" ? "ok" : "low";
+}
+
+// 화면·필터가 실제로 따르는 분류: 수기 라벨 > AI 제안 > 추천도 점수 밴드(80/50).
+// 대시보드의 ?min=80|50 딥링크도 이 함수 하나로 일관되게 동작한다.
+export function effectiveTier(c: Clip): TierLabel {
+  if (c.user_label) return c.user_label;
+  if (c.ai_label) return c.ai_label;
+  const r = c.recommendation ?? 0;
+  return r >= 80 ? "high" : r >= 50 ? "mid" : "low";
 }
 
 export function fmtDate(ts?: number): string {

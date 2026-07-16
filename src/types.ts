@@ -52,6 +52,19 @@ export interface Scene {
 export type ClipStatus = "queued" | "done" | "error";
 export type ScoreColor = "green" | "yellow" | "red";
 
+// 수기 분류 라벨 — 상(high)/중(mid)/하(low). 백엔드 labeling.py와 동일 문자열.
+export type TierLabel = "high" | "mid" | "low";
+
+// GET /projects/{pid}/label_status — 표 툴바 진행 칩용
+export interface LabelStatus {
+  n_labels: number;
+  needed: number;
+  ai_active: boolean;
+  inherited: boolean;          // 자체 학습 전, 이전 프로젝트 취향(시드)을 승계 중
+  w_relevance: number | null;  // 학습된 연관성 가중치(취향 해석용)
+  loo_acc: number | null;      // leave-one-out 일치도(0~1)
+}
+
 export interface Clip {
   id: string;
   project_id: string;
@@ -91,4 +104,9 @@ export interface Clip {
   warnings?: string[];       // 기술품질 경고(초점 나감·너무 짧음·화면 거의 안 보임 등). 점수와 무관, 참고용.
   recommendation?: number;
   color?: ScoreColor;
+
+  // 수기 분류 + AI 제안 (백엔드 영속, 학습 데이터)
+  user_label?: TierLabel;    // 사용자가 직접 찍은 상/중/하
+  ai_label?: TierLabel;      // 미라벨 클립에 대한 개인화 모델 제안(20개 학습 후)
+  ai_label_conf?: number;    // 제안 확신도 0~1
 }

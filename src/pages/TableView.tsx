@@ -1,10 +1,10 @@
-// P4 표 페이지 — 날짜 섹션 + 장소 연속 병합, 검색/기간/필터, 추천도, 실시간
+// P4 표 페이지 — 날짜 섹션 + 장소 연속 병합, 검색/기간/필터, 분류(상/중/하), 실시간
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import type { Clip } from "../types";
+import type { Clip, LabelStatus, TierLabel } from "../types";
 import {
-  fmtTC, colorClass, scoreLabel, fmtDateLabel,
+  fmtTC, scoreLabel, fmtDateLabel, TIERS, tierText, tierClass, effectiveTier,
   personColor, cameraColor, initialOf,
 } from "../util";
 import { useLabels, toggleFavorite } from "../labels";
@@ -98,15 +98,37 @@ function Camera({ camera }: { camera?: string }) {
   );
 }
 
-// 추천도 셀 — 바 + 숫자
-function Score({ clip }: { clip: Clip }) {
-  const cc = colorClass(clip.color);
-  return (
-    <div className="score" title={scoreLabel(clip.color)}>
-      <div className="score-bar">
-        <div className={`bg-${cc}`} style={{ width: `${clip.recommendation ?? 0}%` }} />
+// 분류 셀 — 판단은 사람이, 근거는 AI가.
+// 수기 라벨(꽉 찬 배지) > AI 제안(점선 배지, 클릭해 확정) > 미분류(상·중·하 선택).
+// AI 점수(0~100)는 셀 툴팁으로 후퇴시켜 근거 역할만 한다.
+function TierCell({ clip, onLabel }: { clip: Clip; onLabel: (cid: string, label: TierLabel | null) => void }) {
+  const hint = `AI 점수 ${clip.recommendation ?? 0} · ${scoreLabel(clip.color)}`;
+  if (clip.user_label) {
+    const l = clip.user_label;
+    return (
+      <div className="tier-cell" title={hint}>
+        <button
+          className={`tier-badge solid t-${tierClass(l)}`}
+          onClick={() => onLabel(clip.id, null)}
+          title="내가 분류함 — 클릭하면 해제"
+        >
+          {tierText(l)}
+        </button>
       </div>
-      <span className={`score-num c-${cc}`}>{clip.recommendation ?? 0}</span>
+    );
+  }
+  return (
+    <div className="tier-cell" title={hint}>
+      {TIERS.map((t) => (
+        <button
+          key={t}
+          className={`tier-badge ${clip.ai_label === t ? "ai" : "ghost"} t-${tierClass(t)}`}
+          onClick={() => onLabel(clip.id, t)}
+          title={clip.ai_label === t ? "AI 제안 — 클릭해 확정" : `${tierText(t)}(으)로 분류`}
+        >
+          {clip.ai_label === t ? `AI ${tierText(t)}` : tierText(t)}
+        </button>
+      ))}
     </div>
   );
 }
@@ -122,7 +144,7 @@ function Warn({ clip }: { clip: Clip }) {
   );
 }
 
-const COLS = 8; // 썸네일·파일명·추천도·영상개요·대상·카메라·TC·즐겨찾기 (장소는 병합 셀로 별도)
+const COLS = 8; // 썸네일·파일명·분류·영상개요·대상·카메라·TC·즐겨찾기 (장소는 병합 셀로 별도)
 const PAGE_SIZE = 60;
 
 export default function TableView() {
@@ -134,7 +156,11 @@ export default function TableView() {
   const [q, setQ] = useState("");
   const [fPlace, setFPlace] = useState("");
   const [fCamera, setFCamera] = useState("");
-  const [fMinScore, setFMinScore] = useState(Number(sp.get("min")) || 0);
+  // 대시보드 딥링크 ?min=80|50 → 분류 필터로 매핑(상 / 상+중)
+  const initMin = Number(sp.get("min")) || 0;
+  const [fTier, setFTier] = useState<"" | "high" | "mid+">(
+    initMin >= 80 ? "high" : initMin >= 50 ? "mid+" : ""
+  );
   const [fFrom, setFFrom] = useState("");
   const [fTo, setFTo] = useState("");
   const [dateOpen, setDateOpen] = useState(false);
@@ -149,6 +175,27 @@ export default function TableView() {
   const refresh = useCallback(() => {
     api.listClips(pid).then(setClips).catch(() => {});
   }, [pid]);
+
+  // 분류 진행 상태(n/20, AI 활성 여부) — 툴바 칩
+  const [labelSt, setLabelSt] = useState<LabelStatus | null>(null);
+  const refreshLabelStatus = useCallback(() => {
+    api.labelStatus(pid).then(setLabelSt).catch(() => {});
+  }, [pid]);
+  useEffect(() => { refreshLabelStatus(); }, [refreshLabelStatus]);
+
+  // 라벨 저장: 낙관적 반영 → 응답 후 재조회(20개째엔 AI 제안이 일괄로 붙는다)
+  const setLabel = useCallback((cid: string, label: TierLabel | null) => {
+    setClips((prev) =>
+      prev.map((c) =>
+        c.id === cid
+          ? { ...c, user_label: label ?? undefined, ai_label: label ? undefined : c.ai_label }
+          : c
+      )
+    );
+    api.setClipLabel(cid, label)
+      .then(() => { refresh(); refreshLabelStatus(); })
+      .catch(() => refresh());
+  }, [refresh, refreshLabelStatus]);
 
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => {
@@ -172,7 +219,11 @@ export default function TableView() {
       .filter((c) => c.status === "done")
       .filter((c) => !fPlace || c.place === fPlace)
       .filter((c) => !fCamera || c.camera === fCamera)
-      .filter((c) => (c.recommendation ?? 0) >= fMinScore)
+      .filter((c) => {
+        if (!fTier) return true;
+        const t = effectiveTier(c); // 수기 라벨 > AI 제안 > 점수 밴드
+        return fTier === "high" ? t === "high" : t !== "low";
+      })
       .filter((c) => !fFrom || (c.date ?? "") >= fFrom)
       .filter((c) => !fTo || (c.date ?? "") <= fTo)
       .filter((c) => !favOnly || favSet.has(c.id))
@@ -188,10 +239,10 @@ export default function TableView() {
         const d = (a.date ?? "").localeCompare(b.date ?? "");
         return d !== 0 ? d : a.filename.localeCompare(b.filename);
       });
-  }, [clips, q, fPlace, fCamera, fMinScore, fFrom, fTo, favOnly, favSet]);
+  }, [clips, q, fPlace, fCamera, fTier, fFrom, fTo, favOnly, favSet]);
 
   // 필터가 바뀌면 첫 페이지로
-  useEffect(() => { setPage(1); }, [q, fPlace, fCamera, fMinScore, fFrom, fTo, favOnly, view]);
+  useEffect(() => { setPage(1); }, [q, fPlace, fCamera, fTier, fFrom, fTo, favOnly, view]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageSafe = Math.min(page, totalPages);
@@ -212,10 +263,10 @@ export default function TableView() {
   }, [pageItems]);
 
   const analyzing = clips.filter((c) => c.status === "queued").length;
-  const hasFilter = q || fPlace || fCamera || fMinScore > 0 || fFrom || fTo || favOnly;
+  const hasFilter = q || fPlace || fCamera || fTier || fFrom || fTo || favOnly;
 
   function resetFilters() {
-    setQ(""); setFPlace(""); setFCamera(""); setFMinScore(0); setFFrom(""); setFTo("");
+    setQ(""); setFPlace(""); setFCamera(""); setFTier(""); setFFrom(""); setFTo("");
     setFavOnly(false);
   }
 
@@ -270,7 +321,7 @@ export default function TableView() {
     <>
       <td onClick={(e) => e.stopPropagation()}><ThumbScrub clip={c} /></td>
       <td className="cell-file">{c.filename}</td>
-      <td><Score clip={c} /></td>
+      <td className="tier-td" onClick={(e) => e.stopPropagation()}><TierCell clip={c} onLabel={setLabel} /></td>
       <td className="cell-summary">
         {c.one_line || "—"}
         <Warn clip={c} />
@@ -349,9 +400,9 @@ export default function TableView() {
           onChange={setFCamera}
         />
         <FilterPill
-          label="추천도" value={fMinScore} allValue={0}
-          options={[{ value: 50, text: "보통 이상" }, { value: 80, text: "추천" }]}
-          onChange={setFMinScore}
+          label="분류" value={fTier} allValue={"" as "" | "high" | "mid+"}
+          options={[{ value: "high" as const, text: "상만" }, { value: "mid+" as const, text: "상+중" }]}
+          onChange={setFTier}
         />
 
         <button className={`tt-fav ${favOnly ? "on" : ""}`} onClick={() => setFavOnly((v) => !v)} title="찜한 것만 보기">
@@ -359,6 +410,24 @@ export default function TableView() {
             <path d="M12 20s-7-4.7-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.3-7 10-7 10z" fill={favOnly ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
           </svg>
         </button>
+
+        {/* 분류 학습 진행 칩 — 20개 채우면 AI가 나머지를 제안 */}
+        {labelSt && !labelSt.ai_active && (
+          <span className="label-chip" title="상/중/하를 직접 분류해 주세요. 20개가 쌓이면 내 취향을 학습해 나머지를 AI가 채웁니다.">
+            내 분류 <b>{labelSt.n_labels}/{labelSt.needed}</b>
+            <span className="label-chip-sub"> — {labelSt.needed - labelSt.n_labels}개 더 하면 AI가 나머지를 채워요</span>
+          </span>
+        )}
+        {labelSt?.ai_active && (
+          <span
+            className="label-chip on"
+            title={labelSt.inherited
+              ? "이전 프로젝트에서 학습한 취향으로 제안 중 — 이 프로젝트에서 20개를 채우면 더 정확해져요"
+              : "이 프로젝트의 내 분류로 학습됨 — 제안을 고치면 계속 더 정확해져요"}
+          >
+            ✦ AI 제안 켜짐{labelSt.inherited ? " · 이전 취향 승계" : ""}
+          </span>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -372,7 +441,7 @@ export default function TableView() {
           <thead>
             <tr>
               <th className="th-place">장소</th>
-              <th>썸네일</th><th>파일명</th><th>추천도</th><th>영상개요</th>
+              <th>썸네일</th><th>파일명</th><th>분류</th><th>영상개요</th>
               <th>대상</th><th>카메라</th><th>TC</th>
               <th className="th-fav">찜</th>
             </tr>
@@ -415,7 +484,7 @@ export default function TableView() {
         <table className="tbl">
           <thead>
             <tr>
-              <th>썸네일</th><th>파일명</th><th>추천도</th><th>영상개요</th>
+              <th>썸네일</th><th>파일명</th><th>분류</th><th>영상개요</th>
               <th>장소</th><th>대상</th><th>카메라</th><th>날짜</th><th>TC</th>
               <th className="th-fav">찜</th>
             </tr>
@@ -425,7 +494,7 @@ export default function TableView() {
               <tr key={c.id} className="clip-row" onClick={() => nav(`/project/${pid}/clip/${c.id}`)}>
                 <td onClick={(e) => e.stopPropagation()}><ThumbScrub clip={c} /></td>
                 <td className="cell-file">{c.filename}</td>
-                <td><Score clip={c} /></td>
+                <td className="tier-td" onClick={(e) => e.stopPropagation()}><TierCell clip={c} onLabel={setLabel} /></td>
                 <td className="cell-summary">{c.one_line || "—"}<Warn clip={c} /></td>
                 <td>{c.place || "—"}</td>
                 <td><Subject clip={c} /></td>

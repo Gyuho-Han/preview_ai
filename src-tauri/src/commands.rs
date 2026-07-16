@@ -93,6 +93,17 @@ pub async fn recompute_scores(pid: String) -> Result<Value, String> {
     post(&format!("/projects/{pid}/recompute"), serde_json::json!({})).await
 }
 
+/// 수기 라벨(상/중/하) 저장. label=None이면 해제.
+#[tauri::command]
+pub async fn set_clip_label(cid: String, label: Option<String>) -> Result<Value, String> {
+    put(&format!("/clips/{cid}/label"), serde_json::json!({ "label": label })).await
+}
+
+#[tauri::command]
+pub async fn label_status(pid: String) -> Result<Value, String> {
+    get(&format!("/projects/{pid}/label_status")).await
+}
+
 #[tauri::command]
 pub async fn delete_project(pid: String) -> Result<Value, String> {
     delete(&format!("/projects/{pid}")).await

@@ -26,6 +26,8 @@ fn main() {
             commands::list_clips,
             commands::get_clip,
             commands::recompute_scores,
+            commands::set_clip_label,
+            commands::label_status,
             commands::delete_project,
             commands::delete_clip,
         ])

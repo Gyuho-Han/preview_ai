@@ -463,6 +463,41 @@ tbody tr:last-child td { border-bottom: none; }
 .c-low { color: var(--low); } .bg-low { background: var(--low); }
 .score-label { display: inline-flex; align-items: center; font-size: 12px; font-weight: 700; }
 
+/* ---- 분류(상/중/하) 배지 — 수기(solid) / AI 제안(ai, 점선) / 미분류(ghost) ---- */
+.tier-cell { display: inline-flex; align-items: center; gap: 4px; }
+.tier-td { white-space: nowrap; }
+.tier-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 26px; height: 24px; padding: 0 7px;
+  border-radius: 999px; border: 1.5px solid transparent;
+  font-size: 12px; font-weight: 700; line-height: 1;
+  cursor: pointer; background: none; transition: all .15s;
+}
+.tier-badge.solid.t-rec { background: var(--rec); border-color: var(--rec); color: #fff; }
+.tier-badge.solid.t-ok  { background: var(--ok);  border-color: var(--ok);  color: #fff; }
+.tier-badge.solid.t-low { background: var(--low); border-color: var(--low); color: #fff; }
+.tier-badge.ai.t-rec { background: var(--rec-soft); border: 1.5px dashed var(--rec); color: var(--rec); }
+.tier-badge.ai.t-ok  { background: var(--ok-soft);  border: 1.5px dashed var(--ok);  color: var(--ok); }
+.tier-badge.ai.t-low { background: var(--low-soft); border: 1.5px dashed var(--low); color: var(--low); }
+.tier-badge.ghost { border-color: var(--border); color: var(--muted); background: var(--panel-2); }
+.tier-badge.ghost:hover.t-rec { border-color: var(--rec); color: var(--rec); background: var(--rec-soft); }
+.tier-badge.ghost:hover.t-ok  { border-color: var(--ok);  color: var(--ok);  background: var(--ok-soft); }
+.tier-badge.ghost:hover.t-low { border-color: var(--low); color: var(--low); background: var(--low-soft); }
+.tier-badge.solid:hover { opacity: .82; }
+.tier-badge.ai:hover { filter: brightness(1.05); }
+
+/* 표 툴바 — 분류 학습 진행 칩 */
+.label-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: auto; padding: 6px 11px; border-radius: 999px;
+  font-size: 12px; color: var(--muted);
+  background: var(--panel-2); border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.label-chip b { color: var(--text); font-variant-numeric: tabular-nums; }
+.label-chip-sub { color: var(--muted); }
+.label-chip.on { color: var(--rec); background: var(--rec-soft); border-color: rgba(37, 99, 235, 0.3); font-weight: 600; }
+
 .filters {
   display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0;
   padding: 12px; background: var(--panel); border: 1px solid var(--border);
