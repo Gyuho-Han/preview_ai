@@ -33,6 +33,8 @@ interface Spec {
   date: string;
   place: string;
   camera: string;
+  shot_time?: string;      // HH:MM 24시간제
+  lens?: string;
   people: string[];
   one_line: string;
   relevance: number;
@@ -131,6 +133,10 @@ function makeClip(spec: Spec, id: string, project_id: string): Clip {
     date: spec.date,
     place: spec.place,
     camera: spec.camera,
+    shot_time: spec.shot_time ?? "14:30",
+    lens: spec.lens ?? (spec.camera === "DJI" ? "24mm F/2.8" : "24-70mm F/2.8"),
+    resolution: spec.camera === "DJI" ? "4K" : "6K",
+    fps: spec.camera === "DJI" ? 30 : 24,
     people: spec.people,
     // 대상(Object): 인물이 있으면 인물, 없으면 이 컷의 주된 사물·풍경(일반 키워드 제외)
     subject: spec.people.length
@@ -223,10 +229,12 @@ export const mockApi = {
   },
   async analyzeVideos(pid: string, paths: string[]): Promise<{ clip_ids: string[] }> {
     const ids: string[] = [];
+    // clip id는 전체 clips 개수 기준으로 유니크하게 뽑되(demo 프리시드와 안 겹치게),
+    // spec 선택은 이번 업로드 배치 내 순번(idx)만으로 순환시켜 데모 클립 개수에 영향받지 않게 한다.
     const base = Object.keys(clips).length;
     paths.forEach((path, idx) => {
       const id = `clip-${base + idx}`;
-      const spec = DEMO_SPECS[(base + idx) % DEMO_SPECS.length];
+      const spec = DEMO_SPECS[idx % DEMO_SPECS.length];
       clips[id] = {
         id,
         project_id: pid,

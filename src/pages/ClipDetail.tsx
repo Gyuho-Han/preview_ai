@@ -22,6 +22,7 @@ interface PlayerBlockProps {
   wasPlayingRef: React.MutableRefObject<boolean>;
   durationSec?: number;
   selectionMode: boolean;
+  onSelectionModeToggle: () => void;
   selectionStart?: number;
   selectionEnd?: number;
   onSelectionChange: (start?: number, end?: number) => void;
@@ -41,11 +42,12 @@ const IcCamera = () => <svg {...icProps}><path d="M4 8h3.2l1.3-2h6.9l1.3 2H20a1 
 // 진행바는 실제 플레이어처럼 프레임 안쪽 하단에 오버레이로 두어 input[type=range]로 드래그 seek 가능하게 한다.
 function PlayerBlock({
   cid, preview, videoRef, compact, savedTimeRef, wasPlayingRef, durationSec,
-  selectionMode, selectionStart, selectionEnd, onSelectionChange, onExport
+  selectionMode, onSelectionModeToggle, selectionStart, selectionEnd, onSelectionChange, onExport
 }: PlayerBlockProps) {
   const total = durationSec ?? 0;
   const [mockPlaying, setMockPlaying] = useState(false);
   const [mockT, setMockT] = useState(0);
+  const [videoT, setVideoT] = useState(0);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const showMock = !preview?.ready && !preview?.error;
 
@@ -70,7 +72,7 @@ function PlayerBlock({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showMock, mockPlaying, total]);
 
-  const currentTime = showMock ? mockT : (videoRef.current?.currentTime ?? 0);
+  const currentTime = showMock ? mockT : videoT;
   const isPlaying = showMock ? mockPlaying : isVideoPlaying;
 
   return (
@@ -84,7 +86,7 @@ function PlayerBlock({
             className="clip-video"
             src={api.videoUrl(cid)}
             preload="metadata"
-            onTimeUpdate={(e) => { savedTimeRef.current = e.currentTarget.currentTime; }}
+            onTimeUpdate={(e) => { savedTimeRef.current = e.currentTarget.currentTime; setVideoT(e.currentTarget.currentTime); }}
             onPlay={() => { wasPlayingRef.current = true; setIsVideoPlaying(true); }}
             onPause={() => { wasPlayingRef.current = false; setIsVideoPlaying(false); }}
           />
@@ -111,7 +113,7 @@ function PlayerBlock({
             if (showMock) { setMockPlaying((p) => !p); } else { if (videoRef.current) videoRef.current.paused ? videoRef.current.play() : videoRef.current.pause(); }
           }}
           selectionMode={selectionMode}
-          onSelectionModeToggle={() => onSelectionChange(undefined, undefined)}
+          onSelectionModeToggle={onSelectionModeToggle}
           selectionStart={selectionStart}
           selectionEnd={selectionEnd}
           onSelectionChange={onSelectionChange}
@@ -348,16 +350,14 @@ export default function ClipDetail() {
               cid={cid} preview={preview} videoRef={videoRef} durationSec={clip.duration_sec}
               savedTimeRef={savedTimeRef} wasPlayingRef={wasPlayingRef}
               selectionMode={selectionMode} selectionStart={selectionStart} selectionEnd={selectionEnd}
+              onSelectionModeToggle={() => {
+                setSelectionMode((m) => !m);
+                setSelectionStart(undefined);
+                setSelectionEnd(undefined);
+              }}
               onSelectionChange={(start, end) => {
-                if (start === undefined && end === undefined) {
-                  setSelectionMode(false);
-                  setSelectionStart(undefined);
-                  setSelectionEnd(undefined);
-                } else {
-                  setSelectionMode(true);
-                  setSelectionStart(start);
-                  setSelectionEnd(end);
-                }
+                setSelectionStart(start);
+                setSelectionEnd(end);
               }}
               onExport={(type: "premiere" | "davinci" | "finalcut" | "file", range: "selection" | "full") => {
                 console.log("Export:", { type, range, selectionStart, selectionEnd });
@@ -449,16 +449,14 @@ export default function ClipDetail() {
                 cid={cid} preview={preview} videoRef={videoRef} compact durationSec={clip.duration_sec}
                 savedTimeRef={savedTimeRef} wasPlayingRef={wasPlayingRef}
                 selectionMode={selectionMode} selectionStart={selectionStart} selectionEnd={selectionEnd}
+                onSelectionModeToggle={() => {
+                  setSelectionMode((m) => !m);
+                  setSelectionStart(undefined);
+                  setSelectionEnd(undefined);
+                }}
                 onSelectionChange={(start, end) => {
-                  if (start === undefined && end === undefined) {
-                    setSelectionMode(false);
-                    setSelectionStart(undefined);
-                    setSelectionEnd(undefined);
-                  } else {
-                    setSelectionMode(true);
-                    setSelectionStart(start);
-                    setSelectionEnd(end);
-                  }
+                  setSelectionStart(start);
+                  setSelectionEnd(end);
                 }}
                 onExport={(type: "premiere" | "davinci" | "finalcut" | "file", range: "selection" | "full") => {
                 console.log("Export:", { type, range, selectionStart, selectionEnd });

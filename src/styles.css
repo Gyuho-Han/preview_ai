@@ -850,6 +850,8 @@ tbody tr:last-child td { border-bottom: none; }
   background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.4));
   border-top: 1px solid rgba(251,191,36,0.2);
 }
+/* 선택 모드에선 트랙 div가 드래그를 전담 — range의 네이티브 시크 드래그와 충돌 방지 */
+.control-bar.selection-mode .control-range { pointer-events: none; }
 .control-mini {
   width: 22px; height: 22px; border-radius: 999px; flex: none;
   display: flex; align-items: center; justify-content: center;

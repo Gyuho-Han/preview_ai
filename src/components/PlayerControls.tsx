@@ -103,7 +103,7 @@ export default function PlayerControls({
     : undefined;
 
   return (
-    <div className={`control-bar ${selectionMode ? "selection-mode" : ""}`} style={{ position: "relative" }}>
+    <div className={`control-bar ${selectionMode ? "selection-mode" : ""}`}>
       <button
         className="control-mini"
         onClick={onPlayToggle}
@@ -155,7 +155,7 @@ export default function PlayerControls({
           )}
           <button
             className="control-btn cancel-btn"
-            onClick={() => onSelectionChange(undefined, undefined)}
+            onClick={onSelectionModeToggle}
             title="선택 취소"
             aria-label="선택 취소"
           >

@@ -69,6 +69,10 @@ export interface Clip {
   date?: string;
   place?: string;
   camera?: string;
+  shot_time?: string;       // 촬영 시각(HH:MM 24시간제) — 사이드카 메타데이터 연동 예정
+  lens?: string;            // 사용 렌즈(예: "24-70mm F/2.8") — 사이드카 메타데이터 연동 예정
+  resolution?: string;      // 촬영 해상도(예: "4K", "1920x1080") — 사이드카 메타데이터 연동 예정
+  fps?: number;             // 촬영 프레임레이트 — 사이드카 메타데이터 연동 예정
   people?: string[];
   subject?: string;        // 대상(Object) — 이 컷의 주인공: 인물이면 인물, 아니면 사물·풍경 등
   one_line?: string;
