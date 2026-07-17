@@ -2,7 +2,7 @@
 // 데모 프로젝트에는 날짜·장소가 다양하게 클러스터링된 클립을 미리 심어두어,
 // 표의 날짜 섹션 + 장소 병합 + 추천도 분포를 데이터 없이도 바로 확인할 수 있다.
 
-import type { Clip, PlanContext, ProjectSummary, Scene } from "./types";
+import type { Clip, LabelStatus, PlanContext, ProjectSummary, Scene, TierLabel } from "./types";
 
 const now = Date.now() / 1000;
 
@@ -280,5 +280,47 @@ export const mockApi = {
   async deleteClip(cid: string): Promise<{ ok: boolean }> {
     delete clips[cid];
     return { ok: true };
+  },
+
+  // ---- 수기 분류(상/중/하) — 백엔드(labeling.py) 흐름을 데모용으로 모사 ----
+  // 20개를 채우면 "학습된 것처럼" 미라벨 클립에 제안(ai_label)을 채워
+  // 사이드카 없이도 라벨→활성→제안 전환 UX를 그대로 시연할 수 있다.
+  async setClipLabel(cid: string, label: TierLabel | null): Promise<{ ok: boolean; n_labels: number; ai_active: boolean }> {
+    const c = clips[cid];
+    if (!c) return { ok: false, n_labels: 0, ai_active: false };
+    if (label) {
+      c.user_label = label;
+      delete c.ai_label;
+      delete c.ai_label_conf;
+    } else {
+      delete c.user_label;
+    }
+    const done = Object.values(clips).filter((k) => k.project_id === c.project_id && k.status === "done");
+    const n = done.filter((k) => k.user_label).length;
+    const active = n >= 20;
+    done.forEach((k) => {
+      if (active && !k.user_label) {
+        const s = k.recommendation ?? 0;
+        k.ai_label = s >= 80 ? "high" : s >= 50 ? "mid" : "low";
+        k.ai_label_conf = 0.7;
+      } else if (!k.user_label) {
+        delete k.ai_label;
+        delete k.ai_label_conf;
+      }
+    });
+    return { ok: true, n_labels: n, ai_active: active };
+  },
+  async labelStatus(pid: string): Promise<LabelStatus> {
+    const done = Object.values(clips).filter((k) => k.project_id === pid && k.status === "done");
+    const n = done.filter((k) => k.user_label).length;
+    const active = n >= 20;
+    return {
+      n_labels: n,
+      needed: 20,
+      ai_active: active,
+      inherited: false,
+      w_relevance: active ? 0.6 : null,
+      loo_acc: null,
+    };
   },
 };

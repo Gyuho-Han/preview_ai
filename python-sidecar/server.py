@@ -20,6 +20,7 @@ if getattr(sys, "frozen", False):
     )
 
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
@@ -29,6 +30,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import analyzer
+import labeling
 import setup_deps
 from config import settings
 
@@ -64,8 +66,11 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 # ---- 인메모리 스토어 (단일 사이드카 프로세스) -------------------------------
 _lock = threading.Lock()
-_projects: dict[str, dict] = {}      # project_id -> {meta, plan_context}
-_clips: dict[str, dict] = {}         # clip_id -> 분석 결과 + 진행률
+_projects: dict[str, dict] = {}      # project_id -> {meta, plan_context, label_model}
+_clips: dict[str, dict] = {}         # clip_id -> 분석 결과 + 진행률 + 수기/AI 라벨
+# 가장 최근 학습된 수기 라벨 모델(전역 시드) — 새 프로젝트가 취향을 물려받아
+# 첫 클립부터 AI 제안이 보이게 한다(콜드스타트 방지). 프로젝트 자체 모델이 항상 우선.
+_label_seed: dict | None = None
 _executor = ThreadPoolExecutor(max_workers=settings.concurrency)
 
 DATA_DIR = os.environ.get(
@@ -83,7 +88,7 @@ def _persist() -> None:
             pid: {k: v for k, v in p.items() if not k.startswith("_plan_embedding")}
             for pid, p in _projects.items()
         }
-        data = {"projects": slim_projects, "clips": _clips}
+        data = {"projects": slim_projects, "clips": _clips, "label_seed": _label_seed}
     tmp = _DB_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
@@ -91,6 +96,7 @@ def _persist() -> None:
 
 
 def _load() -> None:
+    global _label_seed
     if not os.path.exists(_DB_PATH):
         return
     try:
@@ -98,6 +104,7 @@ def _load() -> None:
             data = json.load(f)
         _projects.update(data.get("projects", {}))
         _clips.update(data.get("clips", {}))
+        _label_seed = data.get("label_seed") or None
     except Exception:
         pass
 
@@ -391,6 +398,13 @@ def _run_analysis(clip_id: str, project_id: str, video_path: str) -> None:
             _clips[clip_id].update(result)
             _clips[clip_id]["status"] = "done"
             _clips[clip_id]["progress"] = 100
+            # 개인화 라벨 모델이 이미 있으면(자체 학습 or 승계) 새 클립에도 즉시 제안
+            model = _active_label_model(project_id)
+            c = _clips[clip_id]
+            if model is not None and "narrative" in c and not c.get("user_label"):
+                lab, conf = labeling.predict(model, c.get("relevance", 0.0), c["narrative"])
+                c["ai_label"] = lab
+                c["ai_label_conf"] = conf
     except Exception as e:
         import traceback
         # 백그라운드 스레드 예외는 기본적으로 콘솔에 안 찍히므로 명시적으로 출력
@@ -508,7 +522,7 @@ _LIST_FIELDS = (
     "id", "project_id", "filename", "status", "stage", "progress", "error",
     "duration_sec", "date", "place", "camera", "people", "one_line",
     "keywords", "recommendation", "color", "has_speech", "frame_times",
-    "warnings",
+    "warnings", "user_label", "ai_label", "ai_label_conf",
 )
 
 
@@ -574,8 +588,116 @@ def recompute_scores(pid: str) -> dict:
             c["relevance"] = relevance
             c["recommendation"] = rec
             c["color"] = scoring.color_for(rec)
+        # 연관성이 바뀌면 개인화 점수(w×연관성+…)도 바뀌므로 AI 제안 라벨 갱신
+        _apply_ai_labels(pid)
     _persist()
     return {"updated": len(results), "skipped_legacy": skipped_legacy}
+
+
+# ---- 수기 라벨(상/중/하) + 개인화 AI 제안 ----------------------------------
+# 사용자가 프로젝트당 label_train_min(기본 20)개를 직접 분류하면 labeling.py의
+# 3파라미터 모델을 학습해 나머지 클립에 제안 라벨(ai_label)을 채운다.
+# 라벨은 학습 데이터이므로 db.json에 영속화된다(로컬 밖으로 나가지 않음).
+
+
+def _active_label_model(pid: str) -> dict | None:
+    """이 프로젝트에 적용할 모델 — 자체 학습 모델 우선, 없으면 전역 시드(승계)."""
+    return (_projects.get(pid) or {}).get("label_model") or _label_seed
+
+
+def _apply_ai_labels(pid: str) -> bool:
+    """미라벨(done) 클립의 ai_label 일괄 갱신. _lock을 쥔 채 호출할 것.
+
+    구버전(서사강도 없음) 클립은 0으로 때우면 엉뚱한 제안이 붙으므로
+    recompute의 legacy 처리와 같은 원칙으로 건너뛴다. 반환: 모델 활성 여부."""
+    model = _active_label_model(pid)
+    for c in _clips.values():
+        if c["project_id"] != pid or c.get("status") != "done":
+            continue
+        if model is None or c.get("user_label") or "narrative" not in c:
+            c.pop("ai_label", None)
+            c.pop("ai_label_conf", None)
+            continue
+        lab, conf = labeling.predict(model, c.get("relevance", 0.0), c["narrative"])
+        c["ai_label"] = lab
+        c["ai_label_conf"] = conf
+    return model is not None
+
+
+def _retrain_labels(pid: str) -> tuple[int, bool]:
+    """라벨 변경 후 재학습(조건 충족 시) + 제안 갱신. 반환 (라벨 수, 활성 여부).
+
+    학습(수십~수백 ms)은 락 밖에서 돌리고 반영만 락 안에서 한다."""
+    global _label_seed
+    with _lock:
+        n = sum(1 for c in _clips.values()
+                if c["project_id"] == pid and c.get("user_label"))
+        samples = [
+            (c.get("relevance", 0.0), c["narrative"], c["user_label"])
+            for c in _clips.values()
+            if c["project_id"] == pid and c.get("user_label") and "narrative" in c
+        ]
+    model = labeling.fit(samples) if n >= settings.label_train_min else None
+    with _lock:
+        if model is not None and pid in _projects:
+            _projects[pid]["label_model"] = model
+            _label_seed = model  # 다음 프로젝트가 물려받을 취향 시드
+        active = _apply_ai_labels(pid)
+    return n, active
+
+
+class LabelRequest(BaseModel):
+    label: str | None = None  # "high" | "mid" | "low" | None(라벨 해제)
+
+
+@app.put("/clips/{cid}/label")
+def set_clip_label(cid: str, req: LabelRequest) -> dict:
+    """수기 라벨 저장 → (조건 충족 시) 재학습 → 미라벨 클립 AI 제안 갱신."""
+    if req.label is not None and req.label not in labeling.RANK:
+        raise HTTPException(422, "label must be high|mid|low|null")
+    with _lock:
+        c = _clips.get(cid)
+        if not c:
+            raise HTTPException(404, "clip not found")
+        pid = c["project_id"]
+        if req.label:
+            # 라벨링 순간 "AI라면 뭐라 했을지"를 함께 남긴다 — 사후 오염 없는
+            # 취향 일치도 측정용 원천 데이터. UI에는 노출하지 않는다.
+            model = _active_label_model(pid)
+            snap = None
+            if model is not None and "narrative" in c:
+                snap, _ = labeling.predict(model, c.get("relevance", 0.0), c["narrative"])
+            c["ai_label_snapshot"] = snap
+            c["user_label"] = req.label
+            c["user_label_at"] = int(time.time())
+            c.pop("ai_label", None)
+            c.pop("ai_label_conf", None)
+        else:
+            for k in ("user_label", "user_label_at", "ai_label_snapshot"):
+                c.pop(k, None)
+    n, active = _retrain_labels(pid)
+    _persist()
+    return {"ok": True, "n_labels": n, "ai_active": active}
+
+
+@app.get("/projects/{pid}/label_status")
+def label_status(pid: str) -> dict:
+    """표 툴바 진행 칩용 — 라벨 수·활성 여부·(있으면) 학습 결과 요약."""
+    with _lock:
+        if pid not in _projects:
+            raise HTTPException(404, "project not found")
+        n = sum(1 for c in _clips.values()
+                if c["project_id"] == pid and c.get("user_label"))
+        own = _projects[pid].get("label_model")
+        active = own or _label_seed
+    return {
+        "n_labels": n,
+        "needed": settings.label_train_min,
+        "ai_active": active is not None,
+        "inherited": active is not None and own is None,  # 시드 승계 중(자체 학습 전)
+        "w_relevance": active.get("w_relevance") if active else None,
+        "loo_acc": own.get("loo_acc") if own else None,
+    }
 
 
 @app.get("/thumb/{cid}")

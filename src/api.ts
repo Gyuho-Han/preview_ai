@@ -2,7 +2,7 @@
 // 사이드카 HTTP를 직접 호출하거나 목 데이터로 폴백한다.
 // 덕분에 UI를 Tauri 없이도 `npm run dev`로 개발할 수 있다.
 
-import type { Clip, PlanContext, ProjectSummary, SetupSnapshot } from "./types";
+import type { Clip, LabelStatus, PlanContext, ProjectSummary, SetupSnapshot, TierLabel } from "./types";
 import { mockApi } from "./mock";
 
 const SIDECAR = "http://127.0.0.1:8765";
@@ -176,6 +176,24 @@ export const api = {
   async recomputeScores(pid: string): Promise<{ updated: number }> {
     if (useMock) return { updated: 0 };
     return isTauri ? invoke("recompute_scores", { pid }) : http(`/projects/${pid}/recompute`, { method: "POST" });
+  },
+
+  // 수기 분류(상/중/하) 저장. label=null이면 해제. 20개 도달 시 백엔드가
+  // 개인화 모델을 학습해 미라벨 클립에 ai_label을 채운다 → 목록 재조회 필요.
+  async setClipLabel(cid: string, label: TierLabel | null): Promise<{ ok: boolean; n_labels: number; ai_active: boolean }> {
+    if (useMock) return mockApi.setClipLabel(cid, label);
+    return isTauri
+      ? invoke("set_clip_label", { cid, label })
+      : http(`/clips/${cid}/label`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ label }),
+        });
+  },
+
+  async labelStatus(pid: string): Promise<LabelStatus> {
+    if (useMock) return mockApi.labelStatus(pid);
+    return isTauri ? invoke("label_status", { pid }) : http(`/projects/${pid}/label_status`);
   },
 
   async deleteProject(pid: string): Promise<{ ok: boolean }> {

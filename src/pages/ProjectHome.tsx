@@ -208,6 +208,13 @@ export default function ProjectHome() {
     : 0;
 
   // 추천도 분포
+  // 수기 분류 현황(상/중/하) — 표에서 찍은 라벨의 집계. 20개가 학습 발동 기준.
+  const myLabels = useMemo(() => {
+    const n = { high: 0, mid: 0, low: 0 };
+    doneClips.forEach((c) => { if (c.user_label) n[c.user_label]++; });
+    return { ...n, total: n.high + n.mid + n.low };
+  }, [doneClips]);
+
   const dist = useMemo(() => {
     const g = doneClips.filter((c) => colorClass(c.color) === "rec").length;
     const y = doneClips.filter((c) => colorClass(c.color) === "ok").length;
@@ -306,7 +313,12 @@ export default function ProjectHome() {
           <div className="card dash-card">
             <div className="dash-head">
               <h2>추천도 분포</h2>
-              <span className="muted">{done}개 · 1% 단위 채점</span>
+              <span className="muted">
+                {myLabels.total > 0
+                  ? `내 분류 상 ${myLabels.high} · 중 ${myLabels.mid} · 하 ${myLabels.low}${myLabels.total < 20 ? ` (${myLabels.total}/20)` : ""} · `
+                  : ""}
+                {done}개 · 1% 단위 채점
+              </span>
             </div>
 
             <LineDist scores={scores} />
