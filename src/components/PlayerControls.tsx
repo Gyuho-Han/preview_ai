@@ -134,6 +134,9 @@ export default function PlayerControls({
         className="control-track"
         onClick={handleBarClick}
       >
+        {/* 진행 막대는 이 얇은 오버레이 div로만 그린다. input은 투명한 클릭 영역일 뿐이라
+            포커스/드래그해도 두께가 바뀌지 않는다(예전엔 input 배경이라 만지면 16px로 커졌음). */}
+        <div className="control-progress" style={{ backgroundImage: bgImage }} />
         <input
           className="control-range"
           type="range"
@@ -143,7 +146,6 @@ export default function PlayerControls({
           value={currentTime}
           onChange={(e) => onTimeChange(Number(e.target.value))}
           disabled={duration <= 0}
-          style={{ backgroundImage: bgImage }}
         />
       </div>
 

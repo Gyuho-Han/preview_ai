@@ -45,8 +45,11 @@ export default function TierPicker({
       AI {tierText(suggestion)}
     </button>
   ) : (
-    <button className="tier-badge empty" onClick={() => setOpen((v) => !v)} title="분류하기">
-      ＋
+    <button className="tier-badge is-empty" onClick={() => setOpen((v) => !v)} title="분류하기" aria-label="분류하기">
+      {/* 텍스트 '＋'는 폰트 좌우 여백이 비대칭이라 원 안에서 살짝 치우쳐 보인다 → SVG로 정확히 중앙 */}
+      <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true">
+        <path d="M12 5.5v13M5.5 12h13" />
+      </svg>
     </button>
   );
 

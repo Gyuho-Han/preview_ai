@@ -430,7 +430,7 @@ export default function TableView() {
           <thead>
             <tr>
               <th className="th-place">장소</th>
-              <th>썸네일</th><th>파일명</th><th>라벨링</th><th>영상개요</th>
+              <th>썸네일</th><th>파일명</th><th className="th-tier">라벨링</th><th>영상개요</th>
               <th>대상</th><th>카메라</th><th>TC</th>
               <th className="th-fav">찜</th>
             </tr>
@@ -473,7 +473,7 @@ export default function TableView() {
         <table className="tbl">
           <thead>
             <tr>
-              <th>썸네일</th><th>파일명</th><th>라벨링</th><th>영상개요</th>
+              <th>썸네일</th><th>파일명</th><th className="th-tier">라벨링</th><th>영상개요</th>
               <th>장소</th><th>대상</th><th>카메라</th><th>날짜</th><th>TC</th>
               <th className="th-fav">찜</th>
             </tr>
