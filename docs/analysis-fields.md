@@ -72,3 +72,87 @@ preview_ai가 클립마다 생성하는 AI 분석 필드(영상요약, 핵심키
 - 출력 스키마는 기존과 동일하게 `summary: string` 하나를 유지한다 — 3문장을 배열로 쪼개지
   않는다. 소비처(`server.py`의 필드 통과, `ClipDetail.tsx`의 `<p>{clip.summary}</p>`)가
   문자열을 기대하므로 스키마 변경 없이 호환된다.
+
+---
+
+## 2. 핵심키워드 (`keywords`)
+
+상세 페이지(`ClipDetail.tsx`)의 "핵심 키워드" 섹션에 태그로 표시되는 필드.
+표시 외에 시스템 내부에서 한 가지 역할이 더 있다 — **추천도 계산의 입력**이다.
+`analyzer.py`는 자막·장면 설명·keywords를 합쳐 임베딩한 뒤 기획서(주제+키워드) 임베딩과
+비교해 연관성(relevance)을 구하고, 이것이 표의 추천도가 된다. 즉 keywords의 품질이
+"이 클립이 기획 방향과 맞는가"라는 표의 핵심 신호에 직접 영향을 준다.
+
+### ① 목적
+
+- **스캔용 태그**: 편집자가 상세 화면에서 요약을 읽기 전에, 태그 줄만 훑고
+  "이 클립이 무엇에 관한 것인지"를 1~2초 안에 파악하게 한다. 푸티지 로깅 관행에서
+  키워드를 인물·장소·주제 축으로 미리 잡아두고 클립마다 붙이는 이유와 같다
+  ([Lumberjack System](https://www.lumberjacksystem.com/lumberjack-for-reality-and-documentary-production/),
+  [Filmsupply — How to Log Footage](https://www.filmsupply.com/articles/how-to-log-footage/)).
+- **클립 구별·검색의 단서**: 수십~수백 개 클립 사이에서 "그 클립"을 다시 찾을 때
+  쓰는 검색어 후보다. 따라서 키워드는 이 클립을 **다른 클립과 구별해 주는** 말이어야
+  한다 — 어느 클립에나 붙는 말은 검색 변별력이 0이다.
+- **기획서와의 매칭 신호**: keywords는 추천도(연관성) 임베딩에 들어가므로,
+  클립에서 실제 관측된 개념을 기획서와 같은 표기로 적을수록 연관성 판단이 정확해진다.
+
+### ② 선정/작성 기준
+
+**5~8개**를 뽑는다. 개수 범위를 정해 두면 태그 수에 대한 기대치가 생기고
+검색 가능성도 보장된다([Stacks — Controlled Vocabulary](https://stacksteam.com/blog/controlled-vocabulary)).
+
+선정은 **4개 파셋(facet)을 고루 커버**하는 방식으로 한다. 푸티지 로깅에서 기록하는
+축(피사체·장소·행동·주제)을 키워드 갈래로 옮긴 것이다.
+
+| 파셋 | 무엇 | 예 |
+|---|---|---|
+| 인물·피사체 | 누가/무엇이 찍혔나 | "해녀", "어선", "손글씨 편지" |
+| 장소·공간 | 어디서 | "제주 바다", "부엌", "골목시장" |
+| 행위·사건 | 무엇을 하나/무슨 일이 벌어지나 | "물질", "요리", "인터뷰" |
+| 소재·주제 | 무엇에 관한 내용인가 | "세대 갈등", "이주", "향수" |
+
+- 각 파셋에서 클립에 **실제 관측되는 것만** 뽑는다. 관측이 없는 파셋(예: 장소를
+  특정할 수 없는 클로즈업)은 비워 두고 다른 파셋에서 채운다.
+- **범용어 금지**: "사람", "영상", "일상", "모습"처럼 거의 모든 클립에 붙을 수 있는
+  말은 쓰지 않는다. AI 자동 태깅의 대표적 실패가 정확하지만 변별력 없는 generic tag다
+  ([MTM — AI Auto-Tagging: What It Gets Right and Where It Fails](https://www.mtm.video/blog/ai-auto-tagging-dam-what-it-gets-right-and-where-it-fails/)).
+- **형태**: 조사·수식어 없는 명사(구). 같은 대상을 가리키는 유의어를 중복해 넣지 않는다.
+- **기획서 키워드는 통제어휘로 쓴다**: 클립에서 관측된 개념이 기획서 키워드와 같은
+  대상을 가리키면 **기획서의 표기를 그대로 사용**한다(예: 클립에서 "바닷속 작업"이
+  보이고 기획서에 "물질"이 있으면 "물질"로). 표기가 통일돼야 태그 검색이 일관되고
+  추천도 매칭도 정확해진다. 단, **클립에서 관측되지 않은 기획서 키워드를 끼워 넣지
+  않는다** — 그렇게 하면 모든 클립의 추천도가 인위적으로 부풀어 추천도 자체가 무의미해진다.
+
+### ③ 근거
+
+- **파셋 기반 선정**: 푸티지 로깅 관행은 키워드를 인물(people)·장소(places)·주제(topics)
+  축으로 설계하며([Lumberjack System](https://www.lumberjacksystem.com/lumberjack-for-reality-and-documentary-production/)),
+  로깅 기록 대상도 피사체·장소·행동이다([Filmsupply](https://www.filmsupply.com/articles/how-to-log-footage/)).
+  파셋을 정해 두면 키워드가 특정 갈래(예: 눈에 띄는 사물만)로 쏠리는 것을 막는다.
+- **통제어휘(controlled vocabulary)**: 자유 태깅은 일관성이 없어 검색 정확도를 떨어뜨리고,
+  표기를 통제한 어휘가 검색 일관성을 만든다
+  ([Stacks — Controlled Vocabulary](https://stacksteam.com/blog/controlled-vocabulary),
+  [Veritone — Metadata Tagging Best Practices](https://www.veritone.com/blog/metadata-tagging/)).
+  이 프로젝트에서 사용자가 관리하는 유일한 어휘 목록이 기획서 키워드이므로,
+  이를 통제어휘로 삼아 표기를 맞춘다.
+- **generic tag 회피**: AI 태깅은 "정확하지만 범용적인" 태그를 내는 경향이 있고,
+  도메인 맥락(내부 분류·기획 의도)을 모른 채 태깅하면 검색 노이즈가 된다
+  ([MTM](https://www.mtm.video/blog/ai-auto-tagging-dam-what-it-gets-right-and-where-it-fails/),
+  [Iconik — AI metadata tagging](https://www.iconik.io/blog/ai-metadata-tagging-how-it-works-and-what-you-should-know)).
+  범용어 금지 규칙과 기획서 표기 사용 규칙이 이에 대한 대응이다.
+- **관측 근거 제한**: keywords는 추천도 임베딩의 입력이므로, 관측되지 않은 기획서
+  키워드를 넣으면 연관성 점수가 왜곡된다. 요약(§1)과 동일하게 근거를 클립에서 실제
+  관측된 소스(STT 자막, VLM 장면 설명)로 제한한다.
+
+### ④ 프롬프트 설계 원칙
+
+- 기존 규칙 "기획서 키워드와 겹치는 것이 있으면 반드시 포함"은 **"관측된 개념일 때만
+  기획서 표기를 사용"으로 교체**한다. 기존 문구는 관측 여부와 무관하게 기획서 키워드를
+  포함하라는 뜻으로 읽혀 추천도 부풀리기·환각의 원인이 된다.
+- 파셋 4갈래와 "고루 뽑되 관측 없는 갈래는 생략"을 프롬프트에 명시한다.
+- 범용어 금지는 금지어 나열이 아니라 **판별 기준**("어느 클립에나 붙을 수 있는 말 금지")
+  + 대표 예시 2~3개로 준다. 나열식 금지어는 나열 밖 범용어를 막지 못한다.
+- 출력 스키마는 기존과 동일하게 `keywords: string[]`를 유지한다. 소비처
+  (`server.py`의 `_LIST_FIELDS` 통과, `ClipDetail.tsx`의 태그 렌더링,
+  `analyzer.py`·`server.py`의 추천도 계산 `join`)가 모두 문자열 배열을 기대하므로
+  스키마 변경 없이 호환된다.
