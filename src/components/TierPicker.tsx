@@ -11,12 +11,14 @@ import type { TierLabel } from "../types";
 import { TIERS, tierText, tierClass } from "../util";
 
 export default function TierPicker({
-  value, suggestion, hint, onPick,
+  value, suggestion, hint, onPick, size, placement = "side",
 }: {
   value?: TierLabel;
   suggestion?: TierLabel;
   hint?: string;
   onPick: (label: TierLabel | null) => void;
+  size?: "lg";           // 상세페이지용 큰 배지(표는 기본 크기)
+  placement?: "side" | "up"; // 팝오버가 옆으로 vs 위로 펼쳐짐
 }) {
   const [open, setOpen] = useState(false);
 
@@ -49,12 +51,12 @@ export default function TierPicker({
   );
 
   return (
-    <span className="tier-cell" title={hint}>
+    <span className={`tier-cell${size === "lg" ? " lg" : ""}`} title={hint}>
       {collapsed}
       {open && (
         <>
           <div className="tt-backdrop" onClick={() => setOpen(false)} />
-          <div className="tier-pop" role="listbox">
+          <div className={`tier-pop${placement === "up" ? " up" : ""}`} role="listbox">
             {TIERS.map((t) => {
               const active = value === t || (!value && suggestion === t);
               return (

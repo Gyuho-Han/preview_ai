@@ -39,9 +39,9 @@ export default function PlayerControls({
   const [isSeeking, setIsSeeking] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // 선택 모드에서 드래그로 구간 지정
+  // 일반 seek 또는 선택 모드에서 드래그
   useEffect(() => {
-    if (!selectionMode || !barRef.current) return;
+    if (!barRef.current) return;
 
     const handleMouseDown = (e: MouseEvent) => {
       const rect = barRef.current?.getBoundingClientRect();
@@ -50,7 +50,12 @@ export default function PlayerControls({
       const p = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
       const t = p * duration;
       setIsSeeking(true);
-      onSelectionChange(t, undefined);
+
+      if (selectionMode) {
+        onSelectionChange(t, undefined);
+      } else {
+        onTimeChange(t);
+      }
     };
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -59,7 +64,12 @@ export default function PlayerControls({
       if (!rect) return;
       const p = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
       const t = p * duration;
-      onSelectionChange(selectionStart, t);
+
+      if (selectionMode) {
+        onSelectionChange(selectionStart, t);
+      } else {
+        onTimeChange(t);
+      }
     };
 
     const handleMouseUp = () => {
@@ -75,7 +85,7 @@ export default function PlayerControls({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [selectionMode, isSeeking, duration, selectionStart, onSelectionChange]);
+  }, [selectionMode, isSeeking, duration, selectionStart, onSelectionChange, onTimeChange]);
 
   // 일반 seek 처리 (클릭 또는 짧은 드래그)
   const handleBarClick = (e: React.MouseEvent<HTMLDivElement>) => {

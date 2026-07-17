@@ -50,6 +50,7 @@ function PlayerBlock({
   const [mockT, setMockT] = useState(0);
   const [videoT, setVideoT] = useState(0);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const startRef = useRef(0); // 목업 재생 rAF의 시간 기준점(performance.now - t*1000). seek 시 여기만 갱신하면 재생 중에도 이동이 유지된다.
   const showMock = !preview?.ready && !preview?.error;
 
   // 클립이 바뀔 때마다 진행 상태 초기화
@@ -60,10 +61,10 @@ function PlayerBlock({
 
   useEffect(() => {
     if (!showMock || !mockPlaying || total <= 0) return;
-    const start = performance.now() - mockT * 1000;
+    startRef.current = performance.now() - mockT * 1000;
     let raf: number;
     const tick = (now: number) => {
-      const next = (now - start) / 1000;
+      const next = (now - startRef.current) / 1000;
       if (next >= total) { setMockT(total); setMockPlaying(false); return; }
       setMockT(next);
       raf = requestAnimationFrame(tick);
@@ -108,7 +109,9 @@ function PlayerBlock({
           duration={total}
           isPlaying={isPlaying}
           onTimeChange={(t) => {
-            if (showMock) { setMockT(t); } else { if (videoRef.current) videoRef.current.currentTime = t; }
+            // 재생 중 seek: 목업이면 rAF 기준점도 함께 옮겨 다음 프레임이 새 위치에서 이어지게 한다(안 그러면 즉시 되돌아감).
+            if (showMock) { setMockT(t); startRef.current = performance.now() - t * 1000; }
+            else { if (videoRef.current) videoRef.current.currentTime = t; }
           }}
           onPlayToggle={() => {
             if (showMock) { setMockPlaying((p) => !p); } else { if (videoRef.current) videoRef.current.paused ? videoRef.current.play() : videoRef.current.pause(); }
@@ -408,15 +411,25 @@ export default function ClipDetail() {
         {/* 오른쪽 — 추천도 · 메타정보(2줄 고정, 레이아웃 흔들림 방지) · 영상요약(강조) · 키워드(대상 포함) · 추천도 구성 */}
         <div className="detail-side">
           <section className="ds-sec ds-meta">
-            <div className="clip-subrow">
-              {/* 분류(상/중/하) — 판단은 사람이. AI 점수(rec-flag)는 근거로 옆에 병치 */}
+            <div className="clip-subrow label-row">
+              {/* 분류(상/중/하) — 판단은 사람이. 표보다 크게, 팝오버는 위로 펼침. 20개 미만일 땐 라벨링만, 이후 추천도도 함께 */}
               <TierPicker
                 value={clip.user_label}
                 suggestion={clip.ai_label}
-                hint={`AI 점수 ${clip.recommendation ?? 0} · ${scoreLabel(clip.color)}`}
+                hint={clip.ai_label ? `AI 점수 ${clip.recommendation ?? 0} · ${scoreLabel(clip.color)}` : ""}
                 onPick={setLabel}
+                size="lg"
+                placement="up"
               />
-              <span className={`rec-flag c-${cc}`}><span className={`dot bg-${cc}`} />{scoreLabel(clip.color)} {clip.recommendation ?? 0}%</span>
+              {clip.ai_label && <span className={`rec-flag c-${cc}`}><span className={`dot bg-${cc}`} />{scoreLabel(clip.color)} {clip.recommendation ?? 0}%</span>}
+              {/* 기술경고 — 라벨링 오른쪽에 작은 아이콘 딱지로. 별도 섹션이 아니라 라벨 옆에 붙는다. */}
+              {(clip.warnings ?? []).length > 0 && (
+                <span className="warn-inline">
+                  {(clip.warnings ?? []).map((w) => (
+                    <span key={w} className="warn-chip"><span className="warn-ic" aria-hidden="true">⚠</span>{w}</span>
+                  ))}
+                </span>
+              )}
             </div>
             {/* 항상 6칸(3+3) 그리드 — 값이 없어도 자리를 지켜 다른 클립으로 넘어갈 때 높이가 흔들리지 않는다 */}
             <div className="meta-grid">
@@ -427,11 +440,6 @@ export default function ClipDetail() {
               <span className="mi">{clip.lens || "—"}</span>
               <span className="mi">{[clip.resolution, clip.fps ? `${clip.fps}fps` : null].filter(Boolean).join(" · ") || "—"}</span>
             </div>
-            {(clip.warnings ?? []).length > 0 && (
-              <div className="warn-row">
-                {(clip.warnings ?? []).map((w) => <span key={w} className="warn-chip">⚠ {w}</span>)}
-              </div>
-            )}
           </section>
 
           <section className="ds-sec ds-hero">

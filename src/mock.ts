@@ -58,7 +58,7 @@ const DEMO_SPECS: Spec[] = [
 
   // 2026-05-03 — 기차역 2 · 거리 3
   { date: "2026-05-03", place: "기차역", camera: "FX3", people: ["김씨 가족"], one_line: "기차역 플랫폼에서 열차를 기다리는 가족", relevance: 70, narrative: 60, has_speech: true, transcript: "몇 분 남았지? 곧 온대.", keywords: ["기차역", "가족", "이동"] },
-  { date: "2026-05-03", place: "기차역", camera: "FX3", people: [], one_line: "지나가는 기차를 담은 흔들린 핸드헬드 (초점 약함)", relevance: 40, narrative: 30, has_speech: false, warnings: ["초점 나감"], focus: 28, keywords: ["기차", "인서트"] },
+  { date: "2026-05-03", place: "기차역", camera: "FX3", people: [], one_line: "지나가는 기차를 담은 흔들린 핸드헬드", relevance: 40, narrative: 30, has_speech: false, warnings: ["초점 나감"], focus: 28, keywords: ["기차", "인서트"] },
   { date: "2026-05-03", place: "마을 거리", camera: "FX3", people: ["현지 이웃"], one_line: "현지 이웃과 마주쳐 인사를 나누는 장면", relevance: 76, narrative: 72, has_speech: true, transcript: "Hello! 오늘 날씨 좋네요.", keywords: ["이웃", "교류", "마을"] },
   { date: "2026-05-03", place: "마을 거리", camera: "DJI", people: [], one_line: "마을 전경을 담은 드론 상승샷", relevance: 58, narrative: 50, has_speech: false, keywords: ["드론", "마을", "전경"] },
   { date: "2026-05-03", place: "마을 거리", camera: "FX3", people: ["김씨 가족"], one_line: "동네 상점 앞에서 물건을 고르는 가족", relevance: 66, narrative: 55, has_speech: true, transcript: "이거 하나 사볼까?", keywords: ["일상", "상점", "가족"] },
@@ -74,7 +74,7 @@ const DEMO_SPECS: Spec[] = [
   { date: "2026-05-12", place: "언덕", camera: "DJI", people: [], one_line: "해질녘 언덕에서 마을을 내려다보는 B롤", relevance: 80, narrative: 74, has_speech: false, keywords: ["언덕", "노을", "B롤"] },
   { date: "2026-05-12", place: "언덕", camera: "DJI", people: ["김씨 가족"], one_line: "언덕 위에서 가족이 나란히 앉아 대화하는 장면", relevance: 85, narrative: 80, has_speech: true, transcript: "여기 오길 잘한 것 같아.", keywords: ["가족", "대화", "언덕"] },
   { date: "2026-05-12", place: "마을 거리", camera: "FX3", people: ["현지 이웃"], one_line: "이웃집을 방문해 차를 마시며 이야기하는 장면", relevance: 72, narrative: 65, has_speech: true, transcript: "Thank you for having us.", keywords: ["이웃", "교류", "차"] },
-  { date: "2026-05-12", place: "마을 거리", camera: "FX3", people: [], one_line: "골목길을 걷는 발걸음 인서트 (너무 짧음)", relevance: 45, narrative: 38, has_speech: false, warnings: ["너무 짧음"], dur: 6, keywords: ["인서트", "골목"] },
+  { date: "2026-05-12", place: "마을 거리", camera: "FX3", people: [], one_line: "골목길을 걷는 발걸음 인서트", relevance: 45, narrative: 38, has_speech: false, warnings: ["너무 짧음"], dur: 6, keywords: ["인서트", "골목"] },
 
   // 2026-05-20 — 숙소 2 · 부엌 2
   { date: "2026-05-20", place: "블렌타이어 숙소", camera: "FX3", people: ["김씨 가족"], one_line: "떠나기 전 짐을 싸며 지난 시간을 되돌아보는 가족", relevance: 89, narrative: 90, has_speech: true, transcript: "벌써 갈 시간이라니… 시간 진짜 빠르다.", keywords: ["이주", "회상", "가족"] },

@@ -137,7 +137,7 @@ export default function TableView() {
   const [fCamera, setFCamera] = useState("");
   // 대시보드 딥링크 ?min=80|50 → 분류 필터로 매핑(상 / 상+중)
   const initMin = Number(sp.get("min")) || 0;
-  const [fTier, setFTier] = useState<"" | "high" | "mid+">(
+  const [fTier, setFTier] = useState<"" | "high" | "mid" | "low" | "mid+" | "high+">(
     initMin >= 80 ? "high" : initMin >= 50 ? "mid+" : ""
   );
   const [fFrom, setFFrom] = useState("");
@@ -201,7 +201,12 @@ export default function TableView() {
       .filter((c) => {
         if (!fTier) return true;
         const t = effectiveTier(c); // 수기 라벨 > AI 제안 > 점수 밴드
-        return fTier === "high" ? t === "high" : t !== "low";
+        if (fTier === "high") return t === "high";
+        if (fTier === "high+") return t === "high";
+        if (fTier === "mid+") return t === "high" || t === "mid";
+        if (fTier === "mid") return t === "mid";
+        if (fTier === "low") return t === "low";
+        return true;
       })
       .filter((c) => !fFrom || (c.date ?? "") >= fFrom)
       .filter((c) => !fTo || (c.date ?? "") <= fTo)
@@ -379,8 +384,13 @@ export default function TableView() {
           onChange={setFCamera}
         />
         <FilterPill
-          label="분류" value={fTier} allValue={"" as "" | "high" | "mid+"}
-          options={[{ value: "high" as const, text: "상만" }, { value: "mid+" as const, text: "상+중" }]}
+          label="라벨링" value={fTier} allValue={"" as "" | "high" | "mid" | "low" | "mid+" | "high+"}
+          options={[
+            { value: "high" as const, text: "상" },
+            { value: "mid+" as const, text: "상+중" },
+            { value: "mid" as const, text: "중" },
+            { value: "low" as const, text: "하" }
+          ]}
           onChange={setFTier}
         />
 
@@ -420,7 +430,7 @@ export default function TableView() {
           <thead>
             <tr>
               <th className="th-place">장소</th>
-              <th>썸네일</th><th>파일명</th><th>분류</th><th>영상개요</th>
+              <th>썸네일</th><th>파일명</th><th>라벨링</th><th>영상개요</th>
               <th>대상</th><th>카메라</th><th>TC</th>
               <th className="th-fav">찜</th>
             </tr>
@@ -463,7 +473,7 @@ export default function TableView() {
         <table className="tbl">
           <thead>
             <tr>
-              <th>썸네일</th><th>파일명</th><th>분류</th><th>영상개요</th>
+              <th>썸네일</th><th>파일명</th><th>라벨링</th><th>영상개요</th>
               <th>장소</th><th>대상</th><th>카메라</th><th>날짜</th><th>TC</th>
               <th className="th-fav">찜</th>
             </tr>
