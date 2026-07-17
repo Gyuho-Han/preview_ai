@@ -464,27 +464,58 @@ tbody tr:last-child td { border-bottom: none; }
 .score-label { display: inline-flex; align-items: center; font-size: 12px; font-weight: 700; }
 
 /* ---- 분류(상/중/하) 배지 — 수기(solid) / AI 제안(ai, 점선) / 미분류(ghost) ---- */
-.tier-cell { display: inline-flex; align-items: center; gap: 4px; }
+/* 분류(상/중/하) 선택기 — 닫힘: 컨트롤 하나 / 열림: 가로 팝오버 [상][중][하] */
+.tier-cell { position: relative; display: inline-flex; align-items: center; gap: 6px; }
 .tier-td { white-space: nowrap; }
+
+/* 닫힘 컨트롤 3종 */
 .tier-badge {
   display: inline-flex; align-items: center; justify-content: center;
-  min-width: 26px; height: 24px; padding: 0 7px;
+  min-width: 26px; height: 24px; padding: 0 8px;
   border-radius: 999px; border: 1.5px solid transparent;
   font-size: 12px; font-weight: 700; line-height: 1;
   cursor: pointer; background: none; transition: all .15s;
 }
+/* 확정(수기) — 꽉 참 */
 .tier-badge.solid.t-rec { background: var(--rec); border-color: var(--rec); color: #fff; }
 .tier-badge.solid.t-ok  { background: var(--ok);  border-color: var(--ok);  color: #fff; }
 .tier-badge.solid.t-low { background: var(--low); border-color: var(--low); color: #fff; }
+.tier-badge.solid:hover { opacity: .82; }
+/* AI 제안(미확정) — 점선 */
 .tier-badge.ai.t-rec { background: var(--rec-soft); border: 1.5px dashed var(--rec); color: var(--rec); }
 .tier-badge.ai.t-ok  { background: var(--ok-soft);  border: 1.5px dashed var(--ok);  color: var(--ok); }
 .tier-badge.ai.t-low { background: var(--low-soft); border: 1.5px dashed var(--low); color: var(--low); }
-.tier-badge.ghost { border-color: var(--border); color: var(--muted); background: var(--panel-2); }
-.tier-badge.ghost:hover.t-rec { border-color: var(--rec); color: var(--rec); background: var(--rec-soft); }
-.tier-badge.ghost:hover.t-ok  { border-color: var(--ok);  color: var(--ok);  background: var(--ok-soft); }
-.tier-badge.ghost:hover.t-low { border-color: var(--low); color: var(--low); background: var(--low-soft); }
-.tier-badge.solid:hover { opacity: .82; }
 .tier-badge.ai:hover { filter: brightness(1.05); }
+/* 빈 상태 — 점선 원형 + '＋' (미분류 행이 조용하게 보이도록 muted) */
+.tier-badge.empty {
+  width: 24px; min-width: 24px; height: 24px; padding: 0;
+  border: 1.5px dashed var(--border); border-radius: 50%;
+  color: var(--faint); font-size: 15px; font-weight: 400;
+}
+.tier-badge.empty:hover { border-color: var(--rec); border-style: solid; color: var(--rec); background: var(--rec-soft); }
+
+/* 열림 — 가로 팝오버(셀 리플로우 방지: absolute) */
+.tier-pop {
+  position: absolute; top: 50%; left: -4px; transform: translateY(-50%);
+  z-index: 40; display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(0,0,0,.14);
+}
+.tier-pop-opt {
+  min-width: 26px; height: 24px; padding: 0 9px;
+  border-radius: 999px; border: 1.5px solid var(--border);
+  font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer;
+  background: var(--panel-2); color: var(--muted); transition: all .12s;
+}
+.tier-pop-opt.t-rec:hover, .tier-pop-opt.t-rec.active { border-color: var(--rec); color: #fff; background: var(--rec); }
+.tier-pop-opt.t-ok:hover,  .tier-pop-opt.t-ok.active  { border-color: var(--ok);  color: #fff; background: var(--ok); }
+.tier-pop-opt.t-low:hover, .tier-pop-opt.t-low.active { border-color: var(--low); color: #fff; background: var(--low); }
+.tier-pop-clear {
+  height: 24px; padding: 0 9px; border-radius: 999px; border: none;
+  font-size: 11px; color: var(--muted); background: none; cursor: pointer;
+}
+.tier-pop-clear:hover { color: var(--text); text-decoration: underline; }
 
 /* 표 툴바 — 분류 학습 진행 칩 */
 .label-chip {

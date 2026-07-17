@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import type { Clip, TierLabel } from "../types";
-import { colorClass, scoreLabel, TIERS, tierText, tierClass } from "../util";
+import { colorClass, scoreLabel } from "../util";
+import TierPicker from "../components/TierPicker";
 import { useLabels, toggleFavorite } from "../labels";
 import PlayerControls from "../components/PlayerControls";
 
@@ -409,28 +410,12 @@ export default function ClipDetail() {
           <section className="ds-sec ds-meta">
             <div className="clip-subrow">
               {/* 분류(상/중/하) — 판단은 사람이. AI 점수(rec-flag)는 근거로 옆에 병치 */}
-              <span className="tier-cell" title={`AI 점수 ${clip.recommendation ?? 0} · ${scoreLabel(clip.color)}`}>
-                {clip.user_label ? (
-                  <button
-                    className={`tier-badge solid t-${tierClass(clip.user_label)}`}
-                    onClick={() => setLabel(null)}
-                    title="내가 분류함 — 클릭하면 해제"
-                  >
-                    {tierText(clip.user_label)}
-                  </button>
-                ) : (
-                  TIERS.map((t) => (
-                    <button
-                      key={t}
-                      className={`tier-badge ${clip.ai_label === t ? "ai" : "ghost"} t-${tierClass(t)}`}
-                      onClick={() => setLabel(t)}
-                      title={clip.ai_label === t ? "AI 제안 — 클릭해 확정" : `${tierText(t)}(으)로 분류`}
-                    >
-                      {clip.ai_label === t ? `AI ${tierText(t)}` : tierText(t)}
-                    </button>
-                  ))
-                )}
-              </span>
+              <TierPicker
+                value={clip.user_label}
+                suggestion={clip.ai_label}
+                hint={`AI 점수 ${clip.recommendation ?? 0} · ${scoreLabel(clip.color)}`}
+                onPick={setLabel}
+              />
               <span className={`rec-flag c-${cc}`}><span className={`dot bg-${cc}`} />{scoreLabel(clip.color)} {clip.recommendation ?? 0}%</span>
             </div>
             {/* 항상 6칸(3+3) 그리드 — 값이 없어도 자리를 지켜 다른 클립으로 넘어갈 때 높이가 흔들리지 않는다 */}

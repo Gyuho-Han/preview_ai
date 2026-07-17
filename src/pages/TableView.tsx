@@ -4,9 +4,10 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import type { Clip, LabelStatus, TierLabel } from "../types";
 import {
-  fmtTC, scoreLabel, fmtDateLabel, TIERS, tierText, tierClass, effectiveTier,
+  fmtTC, scoreLabel, fmtDateLabel, effectiveTier,
   personColor, cameraColor, initialOf,
 } from "../util";
+import TierPicker from "../components/TierPicker";
 import { useLabels, toggleFavorite } from "../labels";
 import ThumbScrub from "../components/ThumbScrub";
 
@@ -98,38 +99,16 @@ function Camera({ camera }: { camera?: string }) {
   );
 }
 
-// 분류 셀 — 판단은 사람이, 근거는 AI가.
-// 수기 라벨(꽉 찬 배지) > AI 제안(점선 배지, 클릭해 확정) > 미분류(상·중·하 선택).
-// AI 점수(0~100)는 셀 툴팁으로 후퇴시켜 근거 역할만 한다.
+// 분류 셀 — 판단은 사람이, 근거는 AI가. 닫힘 상태에선 컨트롤 하나(빈 '＋' / 확정 배지 /
+// AI 제안 칩)만 조용히 보이고, 클릭하면 옆으로 [상][중][하]가 펼쳐진다(공용 TierPicker).
 function TierCell({ clip, onLabel }: { clip: Clip; onLabel: (cid: string, label: TierLabel | null) => void }) {
-  const hint = `AI 점수 ${clip.recommendation ?? 0} · ${scoreLabel(clip.color)}`;
-  if (clip.user_label) {
-    const l = clip.user_label;
-    return (
-      <div className="tier-cell" title={hint}>
-        <button
-          className={`tier-badge solid t-${tierClass(l)}`}
-          onClick={() => onLabel(clip.id, null)}
-          title="내가 분류함 — 클릭하면 해제"
-        >
-          {tierText(l)}
-        </button>
-      </div>
-    );
-  }
   return (
-    <div className="tier-cell" title={hint}>
-      {TIERS.map((t) => (
-        <button
-          key={t}
-          className={`tier-badge ${clip.ai_label === t ? "ai" : "ghost"} t-${tierClass(t)}`}
-          onClick={() => onLabel(clip.id, t)}
-          title={clip.ai_label === t ? "AI 제안 — 클릭해 확정" : `${tierText(t)}(으)로 분류`}
-        >
-          {clip.ai_label === t ? `AI ${tierText(t)}` : tierText(t)}
-        </button>
-      ))}
-    </div>
+    <TierPicker
+      value={clip.user_label}
+      suggestion={clip.ai_label}
+      hint={`AI 점수 ${clip.recommendation ?? 0} · ${scoreLabel(clip.color)}`}
+      onPick={(label) => onLabel(clip.id, label)}
+    />
   );
 }
 
