@@ -634,14 +634,40 @@ tbody tr:last-child td { border-bottom: none; }
 .tt-datebtn svg { flex: none; }
 .tt-backdrop { position: fixed; inset: 0; z-index: 20; }
 .tt-datepop {
-  position: absolute; top: calc(100% + 8px); left: 0; z-index: 21; width: 240px;
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 21; width: 300px;
   background: var(--panel); border: 1px solid var(--border-strong); border-radius: 12px;
-  padding: 14px; box-shadow: var(--shadow-lg);
+  padding: 12px 12px 14px; box-shadow: var(--shadow-lg);
 }
-.tt-datepop label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
-.tt-datepop label:last-of-type { margin-top: 10px; }
-.tt-datepop input[type="date"] { margin-top: 5px; font-variant-numeric: tabular-nums; }
-.tt-datepop-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+.tt-datepop-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+
+/* ---- 기간 캘린더 (에어비앤비식 범위 선택, 달 세로 스크롤) ---- */
+.cal-scroll { position: relative; max-height: 330px; overflow-y: auto; overscroll-behavior: contain; }
+.cal-wd-row {
+  position: sticky; top: 0; z-index: 2;
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  background: var(--panel); padding: 4px 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+.cal-wd-row span { text-align: center; font-size: 11px; font-weight: 600; color: var(--muted); }
+.cal-month { padding: 4px 0 8px; }
+.cal-title { font-size: 13px; font-weight: 700; color: var(--text); padding: 10px 4px 8px; letter-spacing: -0.01em; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.cal-day {
+  position: relative; height: 36px; padding: 0; border: none; border-radius: 9px;
+  background: transparent; color: var(--text-2); box-shadow: none;
+  font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.cal-day:hover:not(:disabled) { background: var(--panel-2); transform: none; box-shadow: none; }
+.cal-day:disabled { color: var(--faint); opacity: 0.45; }
+.cal-day.mid { background: var(--accent-soft); border-radius: 0; }
+.cal-day.sel { background: var(--accent); color: #fff; }
+.cal-day.sel:hover { background: var(--accent); }
+.cal-dot {
+  position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%);
+  width: 4px; height: 4px; border-radius: 50%; background: var(--accent);
+}
+.cal-day.sel .cal-dot { background: #fff; }
+.cal-day.mid .cal-dot { background: var(--accent); }
 
 /* 파일명 · TC 셀 — 보조 정보라 옅게(확장자까지 전부 노출) */
 .cell-file {
@@ -668,24 +694,72 @@ tbody tr:last-child td { border-bottom: none; }
 .view-toggle button.on { background: var(--panel); color: var(--text); box-shadow: var(--shadow-sm); }
 .view-toggle button.on:hover { background: var(--panel); }
 
-/* ---- 표: 날짜 섹션 헤더 ---- */
+/* ---- 날짜별 보기: 상단 날짜 헤더(얇은 박스) — 한 페이지 = 한 날짜 ---- */
+.date-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; margin: 2px 0 14px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 11px;
+}
+.dh-label {
+  flex: 1; display: flex; align-items: baseline; justify-content: center; gap: 6px;
+}
+.dh-md { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.dh-wd { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.dh-n {
+  font-size: 11.5px; font-weight: 700; padding: 1px 8px; margin-left: 4px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); font-variant-numeric: tabular-nums;
+}
+
+/* ---- 날짜별 보기: 하단 날짜 칩 스트립 (+월 탭) ---- */
+.date-pager { display: flex; align-items: center; gap: 8px; margin: 2px 0 14px; }
+.date-pager.bottom { flex-direction: column; align-items: stretch; gap: 8px; margin: 16px 0 4px; }
+.month-tabs { display: flex; gap: 4px; flex-wrap: wrap; padding: 0 2px; }
+.dm-tab {
+  padding: 4px 11px; border-radius: 999px; box-shadow: none;
+  background: transparent; border: none; color: var(--muted);
+  font-size: 12px; font-weight: 700;
+}
+.dm-tab:hover { background: var(--panel-2); color: var(--text); transform: none; box-shadow: none; }
+.dm-tab.on { background: var(--panel-2); color: var(--text); }
+.dp-arrow {
+  width: 32px; height: 32px; flex: none; padding: 0; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+  font-size: 17px; line-height: 1; box-shadow: none;
+}
+.dp-arrow:hover:not(:disabled) { color: var(--text); background: var(--panel-2); transform: none; box-shadow: none; }
+.dp-arrow:disabled { opacity: 0.35; }
+.date-chips {
+  display: flex; gap: 6px; overflow-x: auto; flex: 1; padding: 2px;
+  scrollbar-width: none;
+}
+.date-chips::-webkit-scrollbar { display: none; }
+.date-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border-radius: 9px; box-shadow: none;
+  background: var(--panel); border: 1px solid var(--border); color: var(--text-2);
+}
+.date-chip:hover { background: var(--panel-2); transform: none; box-shadow: none; }
+.date-chip .dc-md { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+.date-chip .dc-wd { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.date-chip .dc-n {
+  font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+  background: var(--panel-2); color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.date-chip.on { background: var(--accent-soft); border-color: rgba(109, 124, 255, 0.4); color: var(--accent); }
+.date-chip.on .dc-wd { color: var(--accent); opacity: 0.75; }
+.date-chip.on .dc-n { background: rgba(109, 124, 255, 0.18); color: var(--accent); }
+
+/* ---- 전체 보기: 얇은 날짜 구분칸 (토글 없음) ---- */
 .tbl tbody + tbody { border-top: 4px solid transparent; }
-.date-row { cursor: pointer; background: var(--panel-2); }
-.date-row:hover { background: var(--hover); }
-.date-row td {
-  padding: 11px 14px; border-bottom: 1px solid var(--border);
-  position: sticky; top: 38px; background: var(--panel-2); z-index: 1;
+.flat-date-row td {
+  padding: 5px 14px; background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 38px; z-index: 1;
 }
-.date-caret {
-  display: inline-block; color: var(--muted); font-size: 11px; margin-right: 9px;
-  transition: transform .15s;
-}
-.date-caret.closed { transform: rotate(-90deg); }
-.date-md { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
-.date-wd { font-size: 13px; color: var(--muted); margin-left: 6px; font-weight: 600; }
-.date-count {
-  font-size: 12.5px; color: var(--muted); font-weight: 500; margin-left: 14px;
-}
+.fd-md { font-size: 12.5px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.fd-wd { font-size: 11.5px; color: var(--muted); margin-left: 5px; font-weight: 600; }
+.fd-n { font-size: 11px; color: var(--muted); margin-left: 10px; font-weight: 500; }
 
 /* ---- 표: 장소 병합 셀 ---- */
 .place-cell {
@@ -693,7 +767,7 @@ tbody tr:last-child td { border-bottom: none; }
   border-right: 1px solid var(--border); width: 128px;
 }
 .place-pin {
-  display: inline-flex; align-items: center; gap: 5px; position: sticky; top: 78px;
+  display: inline-flex; align-items: center; gap: 5px; position: sticky; top: 68px;
   font-size: 13px; font-weight: 600; color: var(--text-2);
 }
 .place-pin svg { flex: none; color: var(--accent); }

@@ -47,41 +47,123 @@ interface Spec {
   transcript?: string;
 }
 
-// 날짜 안에서 장소가 연속으로 묶이도록 배열 순서를 구성 (실제 촬영 흐름 모사)
-const DEMO_SPECS: Spec[] = [
-  // 2026-05-01 — 숙소 3 · 거리 2
-  { date: "2026-05-01", place: "블렌타이어 숙소", camera: "FX3", people: ["김씨 가족"], one_line: "숙소 도착 첫날, 짐을 풀며 새 보금자리를 둘러보는 가족", relevance: 78, narrative: 70, has_speech: true, transcript: "여기가 앞으로 우리 집이네… 생각보다 넓다.", keywords: ["이주", "가족", "숙소"] },
-  { date: "2026-05-01", place: "블렌타이어 숙소", camera: "FX3", people: ["김씨 가족"], one_line: "부엌에서 라면을 끓이며 스코틀랜드에서의 첫 식사를 준비", relevance: 88, narrative: 75, has_speech: true, transcript: "엄마 이거 진짜 오랜만이다… 여기서 이렇게 먹으니까 더 맛있네.", keywords: ["라면", "가족", "향수"] },
-  { date: "2026-05-01", place: "블렌타이어 숙소", camera: "FX3", people: [], one_line: "창밖으로 보이는 흐린 스코틀랜드 하늘 인서트", relevance: 55, narrative: 35, has_speech: false, keywords: ["인서트", "스코틀랜드"] },
-  { date: "2026-05-01", place: "마을 거리", camera: "DJI", people: [], one_line: "비 내리는 마을 거리를 위에서 담은 드론 인서트", relevance: 60, narrative: 48, has_speech: false, keywords: ["드론", "마을", "비"] },
-  { date: "2026-05-01", place: "마을 거리", camera: "DJI", people: ["김씨 가족"], one_line: "우산 없이 거리를 걷는 가족의 뒷모습", relevance: 82, narrative: 78, has_speech: false, keywords: ["가족", "산책", "비"] },
+// ---- 데모 시드 생성기 — 8일 × 하루 11~15개 = 총 100개 ----
+// 손으로 쓴 장소별 씬 템플릿을 하루 촬영 흐름(장소 블록)에 맞춰 순환 배치해,
+// 날짜 안에서 장소가 연속으로 묶이도록(실제 촬영 흐름 모사) 만든다.
+// 시드 고정 PRNG라 새로고침해도 늘 같은 데이터가 나온다.
+let _seed = 20260501;
+function rnd(): number {
+  _seed = (_seed * 1103515245 + 12345) % 2147483648;
+  return _seed / 2147483648;
+}
+const between = (lo: number, hi: number) => lo + Math.round(rnd() * (hi - lo));
 
-  // 2026-05-03 — 기차역 2 · 거리 3
-  { date: "2026-05-03", place: "기차역", camera: "FX3", people: ["김씨 가족"], one_line: "기차역 플랫폼에서 열차를 기다리는 가족", relevance: 70, narrative: 60, has_speech: true, transcript: "몇 분 남았지? 곧 온대.", keywords: ["기차역", "가족", "이동"] },
-  { date: "2026-05-03", place: "기차역", camera: "FX3", people: [], one_line: "지나가는 기차를 담은 흔들린 핸드헬드", relevance: 40, narrative: 30, has_speech: false, warnings: ["초점 나감"], focus: 28, keywords: ["기차", "인서트"] },
-  { date: "2026-05-03", place: "마을 거리", camera: "FX3", people: ["현지 이웃"], one_line: "현지 이웃과 마주쳐 인사를 나누는 장면", relevance: 76, narrative: 72, has_speech: true, transcript: "Hello! 오늘 날씨 좋네요.", keywords: ["이웃", "교류", "마을"] },
-  { date: "2026-05-03", place: "마을 거리", camera: "DJI", people: [], one_line: "마을 전경을 담은 드론 상승샷", relevance: 58, narrative: 50, has_speech: false, keywords: ["드론", "마을", "전경"] },
-  { date: "2026-05-03", place: "마을 거리", camera: "FX3", people: ["김씨 가족"], one_line: "동네 상점 앞에서 물건을 고르는 가족", relevance: 66, narrative: 55, has_speech: true, transcript: "이거 하나 사볼까?", keywords: ["일상", "상점", "가족"] },
+interface Tpl {
+  people: string[];
+  camera?: string; // 미지정이면 FX3 위주로 랜덤
+  line: string;
+  rel: [number, number];
+  nar: [number, number];
+  speech?: string;
+  kw: string[];
+}
 
-  // 2026-05-07 — 부엌 4 · 숙소 1
-  { date: "2026-05-07", place: "부엌", camera: "FX3", people: ["김씨 가족"], one_line: "어머니가 김치를 담그며 고향 이야기를 꺼내는 장면", relevance: 92, narrative: 85, has_speech: true, transcript: "고향에선 이맘때 다들 김장했는데… 여기서도 해먹어야지.", keywords: ["김치", "향수", "어머니"] },
-  { date: "2026-05-07", place: "부엌", camera: "FX3", people: ["김씨 가족"], one_line: "김치를 버무리는 손을 담은 클로즈업 인서트", relevance: 74, narrative: 60, has_speech: false, keywords: ["김치", "인서트", "손"] },
-  { date: "2026-05-07", place: "부엌", camera: "FX3", people: [], one_line: "냄비에서 피어오르는 김 인서트", relevance: 48, narrative: 40, has_speech: false, keywords: ["인서트", "요리"] },
-  { date: "2026-05-07", place: "부엌", camera: "FX3", people: ["김씨 가족"], one_line: "온 가족이 식탁에 둘러앉아 저녁을 먹으며 웃는 장면", relevance: 90, narrative: 88, has_speech: true, transcript: "다 같이 먹으니까 진짜 좋다.", keywords: ["가족", "식사", "일상"] },
-  { date: "2026-05-07", place: "블렌타이어 숙소", camera: "DJI", people: [], one_line: "식사 후 정리하는 부엌을 담은 롱샷", relevance: 52, narrative: 42, has_speech: false, keywords: ["일상", "정리"] },
+const TPL: Record<string, Tpl[]> = {
+  "블렌타이어 숙소": [
+    { people: ["김씨 가족"], line: "아침 햇살 속 거실에서 하루를 시작하는 가족", rel: [68, 80], nar: [58, 72], speech: "오늘은 날씨가 좀 개려나?", kw: ["일상", "아침", "가족"] },
+    { people: ["김씨 가족"], line: "짐을 정리하며 한국에서 가져온 물건을 꺼내 보는 장면", rel: [75, 88], nar: [70, 84], speech: "이거 챙겨오길 잘했다, 그치?", kw: ["이주", "향수", "가족"] },
+    { people: [], line: "창밖 흐린 하늘과 빗방울 맺힌 유리창 인서트", rel: [45, 60], nar: [32, 48], kw: ["인서트", "날씨", "스코틀랜드"] },
+    { people: ["김씨 가족"], line: "거실 소파에서 다음 일정을 의논하는 가족", rel: [62, 76], nar: [55, 70], speech: "내일은 기차 타고 나가볼까?", kw: ["가족", "대화", "계획"] },
+    { people: [], camera: "DJI", line: "숙소 외관과 마을을 함께 담은 드론 부감", rel: [55, 70], nar: [45, 60], kw: ["드론", "숙소", "전경"] },
+    { people: ["김씨 가족"], line: "아이들이 마당에서 뛰어노는 모습", rel: [70, 84], nar: [64, 80], kw: ["아이", "놀이", "일상"] },
+    { people: ["김씨 가족"], line: "하루를 마치고 소감을 나누는 저녁 인터뷰", rel: [82, 94], nar: [78, 90], speech: "처음엔 낯설었는데 이제 좀 집 같아요.", kw: ["인터뷰", "적응", "가족"] },
+    { people: [], line: "현관에 나란히 놓인 가족 신발 클로즈업", rel: [50, 64], nar: [42, 58], kw: ["인서트", "디테일", "가족"] },
+  ],
+  "마을 거리": [
+    { people: ["김씨 가족"], line: "장 보러 가는 길, 마을 거리를 걷는 가족", rel: [68, 82], nar: [60, 74], speech: "저기 가게 새로 생겼네.", kw: ["산책", "마을", "일상"] },
+    { people: ["현지 이웃"], line: "단골 상점 주인과 안부를 나누는 장면", rel: [72, 86], nar: [66, 80], speech: "Morning! 오늘도 왔네요.", kw: ["이웃", "교류", "상점"] },
+    { people: [], camera: "DJI", line: "마을 중심가를 가로지르는 드론 트래킹샷", rel: [55, 70], nar: [46, 60], kw: ["드론", "마을", "전경"] },
+    { people: ["김씨 가족"], line: "버스 정류장에서 시간표를 확인하는 가족", rel: [58, 72], nar: [50, 64], kw: ["이동", "마을", "일상"] },
+    { people: [], line: "돌담과 이끼 낀 골목 풍경 인서트", rel: [46, 60], nar: [36, 50], kw: ["인서트", "골목", "풍경"] },
+    { people: ["김씨 가족", "현지 이웃"], line: "길에서 만난 이웃과 서툰 영어로 대화하는 가족", rel: [78, 90], nar: [72, 86], speech: "We just moved here… 아, 뭐라 하지?", kw: ["교류", "언어", "유머"] },
+    { people: [], line: "우체국 앞 붉은 우체통과 오가는 사람들", rel: [44, 58], nar: [34, 48], kw: ["인서트", "마을", "일상"] },
+    { people: ["김씨 가족"], line: "비 오는 거리를 우산 하나로 함께 걷는 가족", rel: [74, 88], nar: [70, 84], kw: ["비", "가족", "정서"] },
+  ],
+  "기차역": [
+    { people: ["김씨 가족"], line: "플랫폼에서 열차를 기다리며 노선도를 살피는 가족", rel: [64, 78], nar: [56, 70], speech: "글래스고행이 이거 맞지?", kw: ["기차역", "이동", "가족"] },
+    { people: [], line: "도착하는 열차와 플랫폼 풍경 인서트", rel: [48, 62], nar: [38, 52], kw: ["기차", "인서트"] },
+    { people: ["김씨 가족"], line: "차창 밖 풍경을 바라보는 아이의 옆모습", rel: [72, 86], nar: [68, 82], kw: ["기차", "아이", "정서"] },
+    { people: [], line: "낡은 역사 간판과 시계탑 디테일", rel: [45, 58], nar: [35, 48], kw: ["인서트", "역", "디테일"] },
+    { people: ["김씨 가족"], line: "개찰구를 빠져나오며 목적지를 정하는 가족", rel: [60, 74], nar: [52, 66], speech: "이제 어디부터 가볼까?", kw: ["이동", "가족", "여정"] },
+    { people: [], camera: "DJI", line: "역을 떠나는 열차를 담은 드론 팔로우샷", rel: [54, 68], nar: [46, 60], kw: ["드론", "기차", "전경"] },
+  ],
+  "부엌": [
+    { people: ["김씨 가족"], line: "어머니가 저녁을 준비하며 고향 음식 이야기를 하는 장면", rel: [84, 95], nar: [78, 90], speech: "여기 재료로도 얼추 비슷하게 되네.", kw: ["요리", "향수", "어머니"] },
+    { people: [], line: "끓는 냄비와 피어오르는 김 클로즈업", rel: [46, 60], nar: [38, 52], kw: ["인서트", "요리"] },
+    { people: ["김씨 가족"], line: "온 가족이 식탁에 둘러앉아 저녁을 먹는 장면", rel: [85, 95], nar: [80, 92], speech: "다 같이 먹으니까 진짜 좋다.", kw: ["가족", "식사", "일상"] },
+    { people: ["김씨 가족"], line: "아이들이 설거지를 돕겠다며 나서는 장면", rel: [66, 80], nar: [60, 76], speech: "내가 할래! 아니 내가!", kw: ["아이", "유머", "일상"] },
+    { people: [], line: "찬장에 정리된 한국 양념들 인서트", rel: [52, 66], nar: [42, 56], kw: ["인서트", "디테일", "향수"] },
+    { people: ["김씨 가족"], line: "라면을 끓이며 한국 맛이 그립다고 말하는 장면", rel: [80, 92], nar: [74, 88], speech: "역시 이 맛이지. 한국 생각난다.", kw: ["라면", "향수", "가족"] },
+    { people: ["김씨 가족", "현지 이웃"], line: "이웃을 초대해 한식을 대접하는 저녁", rel: [82, 94], nar: [78, 92], speech: "Try this — 김치예요, 맵지 않아요.", kw: ["교류", "한식", "이웃"] },
+  ],
+  "언덕": [
+    { people: [], camera: "DJI", line: "해질녘 언덕에서 마을을 내려다보는 드론 부감", rel: [70, 84], nar: [62, 76], kw: ["드론", "노을", "전경"] },
+    { people: ["김씨 가족"], line: "언덕 위에 나란히 앉아 이야기를 나누는 가족", rel: [80, 92], nar: [76, 90], speech: "여기 오길 잘한 것 같아.", kw: ["가족", "대화", "정서"] },
+    { people: [], line: "바람에 흔들리는 들풀과 양떼 인서트", rel: [50, 64], nar: [40, 54], kw: ["인서트", "자연", "양"] },
+    { people: ["김씨 가족"], line: "언덕길을 오르며 숨을 고르는 가족의 뒷모습", rel: [64, 78], nar: [58, 72], kw: ["산책", "가족", "여정"] },
+    { people: [], camera: "DJI", line: "구름 그림자가 지나가는 초원을 담은 타임랩스풍 샷", rel: [54, 68], nar: [44, 58], kw: ["드론", "자연", "B롤"] },
+  ],
+};
 
-  // 2026-05-12 — 언덕 2 · 거리 2
-  { date: "2026-05-12", place: "언덕", camera: "DJI", people: [], one_line: "해질녘 언덕에서 마을을 내려다보는 B롤", relevance: 80, narrative: 74, has_speech: false, keywords: ["언덕", "노을", "B롤"] },
-  { date: "2026-05-12", place: "언덕", camera: "DJI", people: ["김씨 가족"], one_line: "언덕 위에서 가족이 나란히 앉아 대화하는 장면", relevance: 85, narrative: 80, has_speech: true, transcript: "여기 오길 잘한 것 같아.", keywords: ["가족", "대화", "언덕"] },
-  { date: "2026-05-12", place: "마을 거리", camera: "FX3", people: ["현지 이웃"], one_line: "이웃집을 방문해 차를 마시며 이야기하는 장면", relevance: 72, narrative: 65, has_speech: true, transcript: "Thank you for having us.", keywords: ["이웃", "교류", "차"] },
-  { date: "2026-05-12", place: "마을 거리", camera: "FX3", people: [], one_line: "골목길을 걷는 발걸음 인서트", relevance: 45, narrative: 38, has_speech: false, warnings: ["너무 짧음"], dur: 6, keywords: ["인서트", "골목"] },
-
-  // 2026-05-20 — 숙소 2 · 부엌 2
-  { date: "2026-05-20", place: "블렌타이어 숙소", camera: "FX3", people: ["김씨 가족"], one_line: "떠나기 전 짐을 싸며 지난 시간을 되돌아보는 가족", relevance: 89, narrative: 90, has_speech: true, transcript: "벌써 갈 시간이라니… 시간 진짜 빠르다.", keywords: ["이주", "회상", "가족"] },
-  { date: "2026-05-20", place: "블렌타이어 숙소", camera: "FX3", people: ["김씨 가족"], one_line: "마지막 밤, 창가에서 소감을 나누는 인터뷰", relevance: 94, narrative: 86, has_speech: true, transcript: "이곳에서의 시간이 우리에겐 정말 큰 선물이었어요.", keywords: ["인터뷰", "향수", "마무리"] },
-  { date: "2026-05-20", place: "부엌", camera: "FX3", people: ["김씨 가족"], one_line: "마지막 아침 식사를 준비하는 부엌", relevance: 77, narrative: 70, has_speech: true, transcript: "마지막 아침이네. 든든하게 먹자.", keywords: ["식사", "가족", "아침"] },
-  { date: "2026-05-20", place: "부엌", camera: "DJI", people: [], one_line: "말끔히 정리된 빈 부엌을 담은 마무리 인서트", relevance: 50, narrative: 44, has_speech: false, keywords: ["인서트", "마무리"] },
+// 하루 촬영 계획 — 블록 합계가 곧 그날 클립 수. 전체 합 100개.
+const DAY_PLANS: { date: string; blocks: [string, number][] }[] = [
+  { date: "2026-05-01", blocks: [["블렌타이어 숙소", 6], ["마을 거리", 5], ["부엌", 4]] },   // 15
+  { date: "2026-05-02", blocks: [["마을 거리", 5], ["기차역", 4], ["블렌타이어 숙소", 3]] }, // 12
+  { date: "2026-05-03", blocks: [["기차역", 4], ["마을 거리", 5], ["부엌", 4]] },            // 13
+  { date: "2026-05-05", blocks: [["부엌", 5], ["블렌타이어 숙소", 3], ["언덕", 3]] },        // 11
+  { date: "2026-05-07", blocks: [["부엌", 6], ["마을 거리", 4], ["블렌타이어 숙소", 4]] },   // 14
+  { date: "2026-05-12", blocks: [["언덕", 5], ["마을 거리", 4], ["기차역", 3]] },            // 12
+  { date: "2026-05-15", blocks: [["마을 거리", 4], ["부엌", 4], ["언덕", 4]] },              // 12
+  { date: "2026-05-20", blocks: [["블렌타이어 숙소", 5], ["부엌", 4], ["언덕", 2]] },        // 11
 ];
+
+// 같은 템플릿이 다시 나올 때 붙는 변형 꼬리표 — 재촬영·보충 촬영 흐름 모사
+const VARIANTS = ["", " — 다른 앵글", " — 클로즈업 위주", " (테이크 2)", " (테이크 3)"];
+
+const DEMO_SPECS: Spec[] = [];
+{
+  const used: Record<string, number> = {}; // 장소별 템플릿 소비 수 → 순환 + 변형 번호
+  for (const day of DAY_PLANS) {
+    let minutes = 9 * 60 + between(0, 40); // 하루 촬영은 09시대 시작
+    for (const [place, count] of day.blocks) {
+      const pool = TPL[place];
+      for (let k = 0; k < count; k++) {
+        const n = used[place] ?? 0;
+        used[place] = n + 1;
+        const t = pool[n % pool.length];
+        const variant = VARIANTS[Math.min(Math.floor(n / pool.length), VARIANTS.length - 1)];
+        minutes += between(6, 28);
+        const warn = rnd() < 0.06 ? (rnd() < 0.5 ? ["초점 나감"] : ["너무 짧음"]) : undefined;
+        DEMO_SPECS.push({
+          date: day.date,
+          place,
+          camera: t.camera ?? (rnd() < 0.2 ? "DJI" : "FX3"),
+          shot_time: `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`,
+          people: t.people,
+          one_line: `${t.line}${variant}`,
+          relevance: between(t.rel[0], t.rel[1]),
+          narrative: between(t.nar[0], t.nar[1]),
+          has_speech: !!t.speech,
+          transcript: t.speech,
+          warnings: warn,
+          focus: warn?.[0] === "초점 나감" ? between(20, 35) : undefined,
+          dur: warn?.[0] === "너무 짧음" ? between(4, 8) : undefined,
+          keywords: t.kw,
+        });
+      }
+    }
+  }
+}
 
 function mmss(sec: number): string {
   const m = Math.floor(sec / 60), s = Math.round(sec % 60);

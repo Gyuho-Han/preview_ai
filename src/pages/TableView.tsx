@@ -1,5 +1,5 @@
 // P4 표 페이지 — 날짜 섹션 + 장소 연속 병합, 검색/기간/필터, 분류(상/중/하), 실시간
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import type { Clip, LabelStatus, TierLabel } from "../types";
@@ -41,6 +41,85 @@ function FilterPill<T extends string | number>({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// 기간 선택 캘린더 — 에어비앤비식: 첫 클릭이 시작일(그대로 닫으면 하루만 선택),
+// 이어서 다른 날을 클릭하면 사이 날짜가 전부 범위로 잡힌다. 달은 위아래 스크롤.
+// 에어비앤비는 미래 중심이라 지난달을 감추지만, 우리는 이미 찍은 과거가 중심이라
+// 데이터(촬영일)가 걸친 달만 렌더하고 그 밖의 날은 비활성 처리한다.
+function RangeCalendar({ from, to, clipDays, minDate, maxDate, onPick }: {
+  from: string; to: string;
+  clipDays: Set<string>;   // 클립이 있는 날 — 점으로 표시
+  minDate: string; maxDate: string;
+  onPick: (from: string, to: string) => void;
+}) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const today = new Date();
+  const first = minDate || `${today.getFullYear()}-${pad(today.getMonth() + 1)}-01`;
+  const last = maxDate || first;
+  const months: { y: number; m: number }[] = [];
+  {
+    let y = Number(first.slice(0, 4)), m = Number(first.slice(5, 7));
+    const ey = Number(last.slice(0, 4)), em = Number(last.slice(5, 7));
+    while (y < ey || (y === ey && m <= em)) {
+      months.push({ y, m });
+      m++; if (m > 12) { m = 1; y++; }
+    }
+  }
+
+  const pick = (d: string) => {
+    if (!from || (from && to)) return onPick(d, ""); // 새 시작일부터 다시
+    if (d < from) return onPick(d, "");              // 시작일보다 앞을 찍으면 시작일 교체
+    if (d === from) return onPick(d, d);             // 같은 날 재클릭 → 하루 확정
+    onPick(from, d);                                 // 범위 완성
+  };
+  const end = to || from; // 시작일만 있는 동안엔 하루짜리 선택으로 표시
+
+  // 열릴 때 선택된 날(없으면 마지막 달)이 보이게 스크롤
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = scrollRef.current;
+    if (!box) return;
+    const target = (box.querySelector(".cal-day.sel") ?? box.querySelector(".cal-month:last-child")) as HTMLElement | null;
+    if (target) box.scrollTop = Math.max(0, target.offsetTop - 64);
+  }, []);
+
+  return (
+    <div className="cal-scroll" ref={scrollRef}>
+      <div className="cal-wd-row" aria-hidden="true">
+        {["일", "월", "화", "수", "목", "금", "토"].map((w) => <span key={w}>{w}</span>)}
+      </div>
+      {months.map(({ y, m }) => {
+        const firstWd = new Date(y, m - 1, 1).getDay();
+        const dayCount = new Date(y, m, 0).getDate();
+        return (
+          <div className="cal-month" key={`${y}-${m}`}>
+            <div className="cal-title">{y}년 {m}월</div>
+            <div className="cal-grid">
+              {Array.from({ length: firstWd }, (_, i) => <span key={`b${i}`} />)}
+              {Array.from({ length: dayCount }, (_, i) => {
+                const iso = `${y}-${pad(m)}-${pad(i + 1)}`;
+                const out = (!!minDate && iso < minDate) || (!!maxDate && iso > maxDate);
+                const isSel = !!from && (iso === from || iso === end);
+                const mid = !!from && !!end && iso > from && iso < end;
+                return (
+                  <button
+                    key={iso}
+                    className={`cal-day ${isSel ? "sel" : ""} ${mid ? "mid" : ""}`}
+                    disabled={out}
+                    onClick={() => pick(iso)}
+                  >
+                    {i + 1}
+                    {clipDays.has(iso) && <i className="cal-dot" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -124,7 +203,7 @@ function Warn({ clip }: { clip: Clip }) {
 }
 
 const COLS = 8; // 썸네일·파일명·분류·영상개요·대상·카메라·TC·즐겨찾기 (장소는 병합 셀로 별도)
-const PAGE_SIZE = 60;
+const FLAT_PAGE = 30; // 전체 보기 페이지 크기 — 매 페이지 30개, 마지막만 미만 허용
 
 export default function TableView() {
   const { pid = "" } = useParams();
@@ -144,9 +223,9 @@ export default function TableView() {
   const [fTo, setFTo] = useState("");
   const [dateOpen, setDateOpen] = useState(false);
   const [favOnly, setFavOnly] = useState(false);
-  const [view, setView] = useState<ViewMode>("date");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [view, setView] = useState<ViewMode>("flat");
   const [page, setPage] = useState(1);
+  const [monthSel, setMonthSel] = useState<string | null>(null); // 하단 날짜 칩의 월 탭 선택
 
   const labels = useLabels(pid);
   const favSet = useMemo(() => new Set(labels.favorites), [labels.favorites]);
@@ -191,6 +270,11 @@ export default function TableView() {
     const ds = clips.map((c) => c.date).filter(Boolean).sort() as string[];
     return { min: ds[0] || "", max: ds[ds.length - 1] || "" };
   }, [clips]);
+  // 캘린더에 점으로 표시할, 클립이 실제로 있는 날들
+  const clipDays = useMemo(
+    () => new Set(clips.filter((c) => c.status === "done" && c.date).map((c) => c.date as string)),
+    [clips]
+  );
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -209,7 +293,8 @@ export default function TableView() {
         return true;
       })
       .filter((c) => !fFrom || (c.date ?? "") >= fFrom)
-      .filter((c) => !fTo || (c.date ?? "") <= fTo)
+      // 종료일이 비어 있으면(시작일만 찍은 상태) 하루 선택으로 간주
+      .filter((c) => { const end = fTo || fFrom; return !end || (c.date ?? "") <= end; })
       .filter((c) => !favOnly || favSet.has(c.id))
       .filter((c) => {
         if (!needle) return true;
@@ -228,14 +313,47 @@ export default function TableView() {
   // 필터가 바뀌면 첫 페이지로
   useEffect(() => { setPage(1); }, [q, fPlace, fCamera, fTier, fFrom, fTo, favOnly, view]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageSafe = Math.min(page, totalPages);
-  const pageItems = useMemo(
-    () => filtered.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE),
-    [filtered, pageSafe]
-  );
+  // 날짜 목록(+개수) — 날짜별 보기의 페이지 단위이자 칩 스트립 데이터
+  const dateCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of filtered) {
+      const k = c.date || "";
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m; // filtered가 날짜순 정렬이라 삽입 순서 = 날짜순
+  }, [filtered]);
+  const dates = useMemo(() => [...dateCounts.keys()], [dateCounts]);
 
-  // 날짜별 그룹 (현재 페이지 기준 — 섹션 헤더 + 장소 병합용)
+  // 날짜별: 한 페이지 = 한 날짜 / 전체: 30개씩
+  const totalPages =
+    view === "date" ? Math.max(1, dates.length) : Math.max(1, Math.ceil(filtered.length / FLAT_PAGE));
+  const pageSafe = Math.min(page, totalPages);
+  const flatStart = (pageSafe - 1) * FLAT_PAGE;
+  const pageItems = useMemo(() => {
+    if (view === "date") {
+      const d = dates[pageSafe - 1] ?? "";
+      return filtered.filter((c) => (c.date || "") === d);
+    }
+    return filtered.slice(flatStart, flatStart + FLAT_PAGE);
+  }, [filtered, pageSafe, view, dates, flatStart]);
+
+  // 하단 날짜 칩의 월 그룹 — 촬영일이 여러 달에 걸치면 월 탭으로 나눠 담는다
+  const months = useMemo(() => {
+    const out: string[] = [];
+    for (const d of dates) {
+      const k = d.slice(0, 7);
+      if (k && !out.includes(k)) out.push(k);
+    }
+    return out;
+  }, [dates]);
+  const activeMonth = monthSel ?? (dates[pageSafe - 1] ?? "").slice(0, 7);
+  const chipDates = months.length > 1 ? dates.filter((d) => d.slice(0, 7) === activeMonth) : dates;
+  const multiYear = new Set(months.map((m) => m.slice(0, 4))).size > 1;
+  const monthLabel = (m: string) =>
+    multiYear ? `${m.slice(2, 4)}년 ${Number(m.slice(5, 7))}월` : `${Number(m.slice(5, 7))}월`;
+  useEffect(() => { setMonthSel(null); }, [pageSafe, view]); // 날짜 이동 시 월 탭은 현재 날짜를 따라간다
+
+  // 전체 보기: 페이지 안에서 날짜 얇은 구분칸 + 장소 병합용 그룹
   const groups = useMemo(() => {
     const map = new Map<string, Clip[]>();
     for (const c of pageItems) {
@@ -273,13 +391,16 @@ export default function TableView() {
     return out;
   }, [totalPages, pageSafe]);
 
-  function toggleDate(date: string) {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      next.has(date) ? next.delete(date) : next.add(date);
-      return next;
-    });
-  }
+  // 날짜별 보기: 활성 날짜 칩이 스트립 밖에 있으면 가운데로 — 세로 스크롤은 건드리지 않게
+  // 스트립의 가로 스크롤만 직접 조정한다(페이지 이동 시 상단 복귀와 충돌 방지).
+  useEffect(() => {
+    if (view !== "date") return;
+    const strip = document.querySelector<HTMLElement>(".date-chips");
+    const chip = strip?.querySelector<HTMLElement>(".on");
+    if (!strip || !chip) return;
+    const delta = chip.getBoundingClientRect().left - strip.getBoundingClientRect().left;
+    strip.scrollTo({ left: strip.scrollLeft + delta - (strip.clientWidth - chip.clientWidth) / 2, behavior: "smooth" });
+  }, [view, pageSafe, dates, activeMonth]);
 
   // 장소 연속 병합: 각 인덱스가 run 시작인지 + run 길이
   function placeRuns(items: Clip[]) {
@@ -294,6 +415,23 @@ export default function TableView() {
     }
     return { start, len };
   }
+
+  // 장소 병합 셀 — 날짜별/전체 보기 공용
+  const placeCell = (c: Clip, len: number) => (
+    <td className="place-cell" rowSpan={len}>
+      <span className="place-pin">
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+          <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z" fill="none" stroke="currentColor" strokeWidth="1.7" />
+          <circle cx="12" cy="10" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.7" />
+        </svg>
+        {c.place || "—"}
+      </span>
+    </td>
+  );
+
+  // 날짜별 보기(한 날짜 = 한 페이지)의 장소 병합 run + 현재 날짜 라벨
+  const dayRuns = placeRuns(pageItems);
+  const curDate = fmtDateLabel(dates[pageSafe - 1] ?? "");
 
   const favCell = (c: Clip) => (
     <td className="fav-td" onClick={(e) => e.stopPropagation()}>
@@ -322,8 +460,8 @@ export default function TableView() {
       <div className="row spread page-head">
         <h1>표 <span className="muted" style={{ fontSize: 14, fontWeight: 400 }}>{filtered.length}개</span></h1>
         <div className="view-toggle">
-          <button className={view === "date" ? "on" : ""} onClick={() => setView("date")}>날짜별</button>
           <button className={view === "flat" ? "on" : ""} onClick={() => setView("flat")}>전체</button>
+          <button className={view === "date" ? "on" : ""} onClick={() => setView("date")}>날짜별</button>
         </div>
       </div>
 
@@ -356,14 +494,22 @@ export default function TableView() {
               <rect x="3.5" y="4.5" width="17" height="16" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.7" />
               <path d="M3.5 9h17M8 3v3M16 3v3" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
             </svg>
-            {fFrom || fTo ? `${fFrom || "처음"} ~ ${fTo || "끝"}` : "기간"}
+            {fFrom
+              ? fTo && fTo !== fFrom
+                ? `${fmtDateLabel(fFrom).md} ~ ${fmtDateLabel(fTo).md}`
+                : fmtDateLabel(fFrom).md
+              : "기간"}
           </button>
           {dateOpen && (
             <>
               <div className="tt-backdrop" onClick={() => setDateOpen(false)} />
               <div className="tt-datepop">
-                <label>시작<input type="date" value={fFrom} min={dateRange.min} max={fTo || dateRange.max} onChange={(e) => setFFrom(e.target.value)} /></label>
-                <label>종료<input type="date" value={fTo} min={fFrom || dateRange.min} max={dateRange.max} onChange={(e) => setFTo(e.target.value)} /></label>
+                <RangeCalendar
+                  from={fFrom} to={fTo}
+                  clipDays={clipDays}
+                  minDate={dateRange.min} maxDate={dateRange.max}
+                  onPick={(f, t) => { setFFrom(f); setFTo(t); }}
+                />
                 <div className="tt-datepop-foot">
                   <button className="link-btn" onClick={() => { setFFrom(""); setFTo(""); }}>초기화</button>
                   <button className="secondary sm" onClick={() => setDateOpen(false)}>완료</button>
@@ -426,6 +572,66 @@ export default function TableView() {
           <p>{clips.length === 0 ? "대시보드에서 영상을 추가하면 분석 결과가 여기에 정리됩니다." : "검색·필터 조건에 맞는 클립이 없습니다. 조건을 바꿔보세요."}</p>
         </div>
       ) : view === "date" ? (
+        <>
+          {/* 날짜 헤더 — 얇은 박스: 현재 날짜 + 영상 개수, 좌우 화살표로 전/다음 촬영일 이동 */}
+          <div className="date-head">
+            <button className="dp-arrow" disabled={pageSafe <= 1} onClick={() => goPage(pageSafe - 1)} title="이전 촬영일" aria-label="이전 촬영일">‹</button>
+            <div className="dh-label">
+              <span className="dh-md">{curDate.md}</span>
+              {curDate.wd && <span className="dh-wd">({curDate.wd})</span>}
+              <span className="dh-n">{pageItems.length}개</span>
+            </div>
+            <button className="dp-arrow" disabled={pageSafe >= totalPages} onClick={() => goPage(pageSafe + 1)} title="다음 촬영일" aria-label="다음 촬영일">›</button>
+          </div>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th className="th-place">장소</th>
+                <th>썸네일</th><th>파일명</th><th className="th-tier">라벨링</th><th>영상개요</th>
+                <th>대상</th><th>카메라</th><th>TC</th>
+                <th className="th-fav">찜</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageItems.map((c, i) => (
+                <tr key={c.id} className="clip-row" onClick={() => nav(`/project/${pid}/clip/${c.id}`)}>
+                  {dayRuns.start[i] && placeCell(c, dayRuns.len[i])}
+                  {rowFor(c)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {/* 하단 날짜 칩 — 촬영일이 여러 달에 걸치면 월 탭으로 나눠 스케일 대응 */}
+          <div className="date-pager bottom">
+            {months.length > 1 && (
+              <div className="month-tabs">
+                {months.map((m) => (
+                  <button key={m} className={`dm-tab ${m === activeMonth ? "on" : ""}`} onClick={() => setMonthSel(m)}>
+                    {monthLabel(m)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="date-chips">
+              {chipDates.map((d) => {
+                const i = dates.indexOf(d);
+                const { md, wd } = fmtDateLabel(d);
+                return (
+                  <button
+                    key={d || "nodate"}
+                    className={`date-chip ${i + 1 === pageSafe ? "on" : ""}`}
+                    onClick={() => goPage(i + 1)}
+                  >
+                    <span className="dc-md">{md}</span>
+                    {wd && <span className="dc-wd">{wd}</span>}
+                    <span className="dc-n">{dateCounts.get(d)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      ) : (
         <table className="tbl">
           <thead>
             <tr>
@@ -437,31 +643,20 @@ export default function TableView() {
           </thead>
           {groups.map((g) => {
             const { md, wd } = fmtDateLabel(g.date);
-            const isCollapsed = collapsed.has(g.date);
             const runs = placeRuns(g.items);
             return (
               <tbody key={g.date || "nodate"}>
-                <tr className="date-row" onClick={() => toggleDate(g.date)}>
+                {/* 얇은 날짜 구분칸 — 토글 없이 날짜만 표기 */}
+                <tr className="flat-date-row">
                   <td colSpan={COLS + 1}>
-                    <span className={`date-caret ${isCollapsed ? "closed" : ""}`}>▾</span>
-                    <span className="date-md">{md}</span>
-                    {wd && <span className="date-wd">({wd})</span>}
-                    <span className="date-count">{g.items.length}개</span>
+                    <span className="fd-md">{md}</span>
+                    {wd && <span className="fd-wd">({wd})</span>}
+                    <span className="fd-n">{g.items.length}개</span>
                   </td>
                 </tr>
-                {!isCollapsed && g.items.map((c, i) => (
+                {g.items.map((c, i) => (
                   <tr key={c.id} className="clip-row" onClick={() => nav(`/project/${pid}/clip/${c.id}`)}>
-                    {runs.start[i] && (
-                      <td className="place-cell" rowSpan={runs.len[i]}>
-                        <span className="place-pin">
-                          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-                            <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z" fill="none" stroke="currentColor" strokeWidth="1.7" />
-                            <circle cx="12" cy="10" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.7" />
-                          </svg>
-                          {c.place || "—"}
-                        </span>
-                      </td>
-                    )}
+                    {runs.start[i] && placeCell(c, runs.len[i])}
                     {rowFor(c)}
                   </tr>
                 ))}
@@ -469,39 +664,13 @@ export default function TableView() {
             );
           })}
         </table>
-      ) : (
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>썸네일</th><th>파일명</th><th className="th-tier">라벨링</th><th>영상개요</th>
-              <th>장소</th><th>대상</th><th>카메라</th><th>날짜</th><th>TC</th>
-              <th className="th-fav">찜</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageItems.map((c) => (
-              <tr key={c.id} className="clip-row" onClick={() => nav(`/project/${pid}/clip/${c.id}`)}>
-                <td onClick={(e) => e.stopPropagation()}><ThumbScrub clip={c} /></td>
-                <td className="cell-file">{c.filename}</td>
-                <td className="tier-td" onClick={(e) => e.stopPropagation()}><TierCell clip={c} onLabel={setLabel} /></td>
-                <td className="cell-summary">{c.one_line || "—"}<Warn clip={c} /></td>
-                <td>{c.place || "—"}</td>
-                <td><Subject clip={c} /></td>
-                <td><Camera camera={c.camera} /></td>
-                <td className="muted">{fmtDateLabel(c.date).md}</td>
-                <td className="muted cell-tc">{fmtTC(c.duration_sec)}</td>
-                {favCell(c)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
       )}
 
-      {totalPages > 1 && (
+      {view === "flat" && totalPages > 1 && filtered.length > 0 && (
         <div className="pagination">
           <button className="secondary sm" disabled={pageSafe <= 1} onClick={() => goPage(pageSafe - 1)}>← 이전</button>
           <span className="pg-range">
-            {(pageSafe - 1) * PAGE_SIZE + 1}–{Math.min(pageSafe * PAGE_SIZE, filtered.length)}
+            {flatStart + 1}–{flatStart + pageItems.length}
             <span className="muted"> / {filtered.length}개</span>
           </span>
           <div className="pg-nums">
