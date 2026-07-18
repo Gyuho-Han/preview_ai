@@ -156,3 +156,107 @@ preview_ai가 클립마다 생성하는 AI 분석 필드(영상요약, 핵심키
   (`server.py`의 `_LIST_FIELDS` 통과, `ClipDetail.tsx`의 태그 렌더링,
   `analyzer.py`·`server.py`의 추천도 계산 `join`)가 모두 문자열 배열을 기대하므로
   스키마 변경 없이 호환된다.
+
+---
+
+## 3. 영상내용 (`scenes[].desc` — 타임스탬프별 주요 장면)
+
+상세 페이지(`ClipDetail.tsx`)의 "타임스탬프별 주요 장면" 목록에 표시되는,
+**장면(키프레임)별 내용 설명** 필드. 요약(§1)이 클립 전체를 압축한 2차 가공물이라면,
+영상내용은 "이 클립에 무엇이 담겼는가"를 시간순으로 남기는 **1차 기록**이다.
+타임스탬프(`time`/`t`)는 장면 검출로 얻은 실제 키프레임 시각을 시스템이 붙이고
+(`analyzer.py`의 `_build_scenes`), 설명(`desc`)은 키프레임마다 VLM(Qwen2.5-VL)이
+생성한다 — 즉 이 필드의 생성 프롬프트는 예외적으로 `llm.py`가 아니라 `vlm.py`에 있다.
+
+### ① 목적
+
+- **클립 안에서 순간 찾기**: 표·요약이 "어느 클립인지"를 찾게 한다면, 영상내용은
+  "그 클립의 어느 지점인지"를 찾게 한다. 상세 페이지에서 장면을 클릭하면 그 시각으로
+  시크되므로, 설명은 편집자가 원하는 순간을 목록만 훑고 바로 찾아가게 하는
+  내비게이션이다. 방송·MAM 업계가 타임코드 연동 메타데이터를 만드는 이유가 이것이다 —
+  "타임코드 기반 메타데이터가 있어야 자산을 장면·순간 단위로 검색하고, 영상을 눈으로
+  스캔하는 대신 검색에서 바로 그 지점으로 이동한다"
+  ([Digital Nirvana — Metadata for Video Files](https://digital-nirvana.com/blog/metadata-for-video-files-broadcast-checklist/)).
+- **전 필드의 근거층**: 영상요약·한줄요약·키워드·인물·장소는 모두 자막과 이 장면
+  설명을 근거로 융합 LLM(`llm.py`)이 생성하고, 추천도(연관성) 임베딩에도
+  `scene_descriptions`가 직접 들어간다(`analyzer.py`, `server.py`의 recompute).
+  특히 **음성 없는 클립(B롤)에서는 장면 설명이 유일한 내용 근거**다.
+  여기서 생긴 오류·환각은 모든 하위 필드로 전파되므로, 이 필드의 제1 원칙은
+  "정확한 관찰 기록"이다.
+
+### ② 선정/작성 기준
+
+장면 하나당 **1~2문장**, 아래 우선순위로 쓴다. 촬영 로그 관행이 샷을
+"샷 크기 + 피사체 + 행동"으로 적는 것(예: "medium shot of lady handing over
+bananas to customer")을 문장 구성 순서로 옮긴 것이다.
+
+| 순서 | 요소 | 내용 |
+|---|---|---|
+| ① | 피사체 | 누가/무엇이 보이는가 — 인물 수·눈에 띄는 외형, 중심 사물 |
+| ② | 행동·상황 | 프레임에서 확인되는 동작·일어나는 일 |
+| ③ | 장소·환경 | 실내/실외, 환경, 조명·날씨 등 화면에서 드러나는 것 |
+| ④ | 구도 | 클로즈업/미디엄/와이드 등 — 편집 판단에 유의미하게 두드러질 때만 |
+
+- **보이는 것만 기록**: 프레임에 실제로 보이는 것만 쓴다. VLM은 이미지에 없는
+  사물을 언급하는 객체 환각(object hallucination) 경향이 검증되어 있으므로
+  ([arXiv:2305.10355 — Evaluating Object Hallucination in Large Vision-Language Models](https://arxiv.org/abs/2305.10355)),
+  불확실한 것은 쓰지 않는 쪽을 택한다.
+- **정지 프레임의 한계를 넘는 추측 금지**: VLM이 보는 것은 장면의 대표 프레임
+  1장이다. 한 장에서 확인할 수 없는 움직임의 방향, 장면의 전후 맥락, 인물의
+  감정·의도는 추측하지 않는다.
+- **분위기는 단정하지 않고 관찰로 대체**: "평화로운 분위기" 같은 해석 단정 대신,
+  그렇게 보이게 하는 관찰 가능한 요소(빛, 날씨, 표정)를 쓴다. 해석은 융합 단계
+  (`ai_comment`)의 몫이다.
+- **화면 속 문자 정보는 기록**: 간판·문서·자막 등 판독 가능한 글자는 그대로 적는다.
+  장소·상황을 특정하는 검색 단서로 가치가 높다.
+- **간결·본론 우선**: 이미지 서술 접근성 지침과 동일하게 — 핵심 요소만 간결하게,
+  "이 장면은/화면에는" 같은 군더더기 표현 없이 내용부터 시작한다
+  ([NN/g — Alt Text: What to Write](https://www.nngroup.com/articles/write-alt-text/),
+  [Harvard — Describe Content in Images](https://accessibility.huit.harvard.edu/describe-content-images)).
+- 각 장면 구간의 음성 자막은 시스템이 `speech`로 따로 붙이므로(`_attach_scene_speech`),
+  설명이 발화 내용을 다룰 필요는 없다.
+
+### ③ 근거
+
+- **순간 단위 검색·이동**: 타임코드 연동 메타데이터는 자산을 장면·순간 단위로
+  검색 가능하게 하고, 시각적 스캔을 검색-이동으로 대체한다
+  ([Digital Nirvana](https://digital-nirvana.com/blog/metadata-for-video-files-broadcast-checklist/)).
+  학술적으로도 클립 전체 요약과 별개로, 미편집 영상의 사건들을 시간 구간별로
+  각각 서술하는 dense video captioning이 독립 과제로 정립되어 있다 —
+  "구간 localize + 구간별 캡션"이라는 이 프로젝트의 구조(시각은 장면 검출,
+  설명은 VLM)와 같은 분해다
+  ([ACM Computing Surveys — Dense Video Captioning: A Survey](https://dl.acm.org/doi/full/10.1145/3712059)).
+- **샷 로그 관행**: 푸티지 로깅에서 클립 노트는 샷 타입·피사체·행동을 적는다
+  ([Filmsupply — How to Log Footage](https://www.filmsupply.com/articles/how-to-log-footage/),
+  [Pond5 — 6 Easy Steps for Logging Footage](https://blog.pond5.com/5716-6-easy-steps-logging-footage/)).
+  ②의 우선순위(피사체→행동→환경→구도)는 이 관행을 따른 것이다.
+- **객체 환각 대응**: LVLM은 이미지에 없는 빈출 객체를 언급하는 환각이 체계적으로
+  관측된다([arXiv:2305.10355](https://arxiv.org/abs/2305.10355)). 이 필드는 모든
+  하위 필드와 추천도 임베딩의 근거이므로, 환각 1건이 요약·키워드·추천도까지
+  오염시킨다. "보이는 것만·불확실하면 생략" 규칙과 감정·의도 추측 금지가 대응책이다.
+- **이미지 서술 지침**: 접근성 분야의 이미지 서술 원칙(핵심 요소 중심의 간결한
+  서술, 군더더기 도입부 금지, 이미지 속 텍스트 포함)은 "화면을 못 보는 독자에게
+  화면을 전달"하는 검증된 작성 규범으로, 재생 전 클립을 판단하는 편집자의 상황과
+  같다([NN/g](https://www.nngroup.com/articles/write-alt-text/),
+  [Harvard](https://accessibility.huit.harvard.edu/describe-content-images)).
+
+### ④ 프롬프트 설계 원칙
+
+- 이 필드의 프롬프트는 `vlm.py`(`_PROMPT`/`_SYSTEM`)에 있다. `llm.py`는 장면
+  설명을 소비만 하며, 장면 설명의 품질 기준은 생성 지점인 VLM 프롬프트에서 잡는다.
+- 요소를 병렬 나열("장소, 인물 수와 행동, 구도, 분위기를 구체적으로")하지 않고
+  **우선순위가 있는 순서(피사체→행동→환경→구도)** 로 지시한다. 병렬 나열은 어느
+  요소가 중요한지 알려주지 못해 장소·분위기 서술이 문장을 선점하는 원인이 된다.
+- "분위기" 요구는 **관찰 가능한 요소로 대체**해 지시한다(해석 단정 금지).
+  기존 프롬프트는 "분위기를 구체적으로"라고 요구해 근거 없는 해석 수식을 유도했다.
+- 정지 프레임 1장 기반임을 전제로 **움직임·전후 맥락·감정 추측 금지**를 명시한다.
+- 화면 속 판독 가능한 글자 기록 지시를 추가한다.
+- 한국어 강제·재시도, 프레임별 실패 격리(`describe_keyframes`) 등 기존 동작은
+  유지한다. 출력은 기존과 동일한 **프레임당 평문 1~2문장**(JSON 아님)이다 —
+  소비처(`analyzer.py` `_build_scenes`→`scenes[].desc`, `llm.py` `scene_block`,
+  추천도 임베딩의 `scene_descriptions: string[]`, `ClipDetail.tsx` 장면 목록)가
+  모두 문자열(배열)을 기대하므로 스키마 변경 없이 호환된다.
+
+> 필드 이름 매핑 메모: 과제 목록의 "영상내용"은 상세 페이지의 장면별 내용 기록
+> (`scenes[].desc`)을 가리킨다. 클립 전체를 한 번에 개관하는 "영상개요"(과제 4)는
+> 표·상세 상단의 `one_line`(한줄요약)에 대응한다.
